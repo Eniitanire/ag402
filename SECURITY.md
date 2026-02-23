@@ -6,7 +6,7 @@ Ag402 handles private keys and financial transactions. We take security extremel
 
 **Please do NOT report security vulnerabilities through public GitHub issues.**
 
-Instead, please report them via email to: **security@ag402.dev**
+Instead, please report them via email to: **aethercore.dev@proton.me**
 
 You should receive a response within 48 hours. If for some reason you do not, please follow up to ensure we received your original message.
 
