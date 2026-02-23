@@ -39,7 +39,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e protocol/ && pip install -e "core/[dev]"
+      - run: pip install -e protocol/ -e "adapters/mcp/[dev]" && pip install -e "core/[dev]"
       - run: cd core && pytest tests/ -v --cov=ag402_core --cov-report=xml
 
   test-adapters:

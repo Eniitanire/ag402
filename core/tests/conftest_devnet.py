@@ -92,8 +92,8 @@ def _ensure_sol_balance_sync(
     # Strategy 1: direct SOL transfer from funder (bypasses airdrop rate limits)
     if funder_kp is not None:
         try:
-            from solders.system_program import transfer, TransferParams
             from solders.message import Message
+            from solders.system_program import TransferParams, transfer
             from solders.transaction import Transaction
 
             transfer_amount = int(0.2 * 1e9)  # 0.2 SOL
@@ -195,13 +195,11 @@ def _sync_setup() -> DevnetState:
             "DEVNET_SELLER_KEY_PATH",
             str(Path.home() / ".ag402" / "devnet-seller.json"),
         )
-        if os.path.exists(seller_path):
-            seller_kp = _load_keypair(seller_path)
-        else:
-            # No seller private key available — generate an ephemeral one.
-            # Some tests (e.g. insufficient-balance) need a keypair to instantiate
-            # SolanaAdapter, even though the main "seller" role only needs a pubkey.
-            seller_kp = Keypair()
+        # No seller private key available — generate an ephemeral one when
+        # the file is missing.  Some tests (e.g. insufficient-balance) need a
+        # keypair to instantiate SolanaAdapter, even though the main "seller"
+        # role only needs a pubkey.
+        seller_kp = _load_keypair(seller_path) if os.path.exists(seller_path) else Keypair()
 
     # If DEVNET_SELLER_PUBKEY is set, use it as the destination address for payments;
     # otherwise derive from the seller keypair.

@@ -29,12 +29,10 @@ solana_mod = pytest.importorskip("solana", reason="solana-py not installed")
 solders_mod = pytest.importorskip("solders", reason="solders not installed")
 
 import base58
+from ag402_core.payment.solana_adapter import SolanaAdapter
 from solders.hash import Hash as SoldersHash
 from solders.keypair import Keypair
-from solders.pubkey import Pubkey
 from solders.signature import Signature
-
-from ag402_core.payment.solana_adapter import SolanaAdapter
 
 # ---------------------------------------------------------------------------
 # Generate a valid test keypair (random, no funds)
@@ -569,7 +567,7 @@ class TestDevnetTransactionTiming:
             print(f"  Payment {i+1}: {elapsed:.2f}s (tx: {result.tx_hash[:20]}...)")
 
         avg = sum(timings) / len(timings)
-        print(f"\n  === Pay Latency ===")
+        print("\n  === Pay Latency ===")
         print(f"  Min: {min(timings):.2f}s | Max: {max(timings):.2f}s | Avg: {avg:.2f}s | Jitter: {max(timings)-min(timings):.2f}s")
         adapter.close()
 
@@ -600,7 +598,7 @@ class TestDevnetTransactionTiming:
             print(f"  Verify {i+1}: {elapsed:.2f}s")
 
         avg = sum(timings) / len(timings)
-        print(f"\n  === Verify Latency ===")
+        print("\n  === Verify Latency ===")
         print(f"  Min: {min(timings):.2f}s | Max: {max(timings):.2f}s | Avg: {avg:.2f}s")
         adapter.close()
 
@@ -622,7 +620,7 @@ class TestDevnetTransactionTiming:
             timings.append(elapsed)
             print(f"  Balance {i+1}: {elapsed:.3f}s ({balance:.2f} USDC)")
 
-        print(f"\n  === Balance Latency ===")
+        print("\n  === Balance Latency ===")
         print(f"  Min: {min(timings):.3f}s | Max: {max(timings):.3f}s | Avg: {sum(timings)/len(timings):.3f}s")
         adapter.close()
 
@@ -655,7 +653,7 @@ class TestDevnetTransactionTiming:
         assert r2.success
         a2.close()
 
-        print(f"\n  === Confirmation Comparison ===")
+        print("\n  === Confirmation Comparison ===")
         print(f"  Confirmed:  {t_confirmed:.2f}s")
         print(f"  Finalized:  {t_finalized:.2f}s")
         print(f"  Diff:       {t_finalized - t_confirmed:+.2f}s")
