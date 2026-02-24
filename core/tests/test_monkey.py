@@ -149,6 +149,7 @@ class TestReentrancyGuard:
         """
         from ag402_core.middleware.x402_middleware import X402PaymentMiddleware
         from ag402_core.payment.solana_adapter import MockSolanaAdapter
+
         from tests.conftest import _402_headers, _make_config, _make_wallet
 
         call_count = 0
@@ -283,6 +284,7 @@ class TestMiddlewareInitRace:
         from ag402_core.middleware.x402_middleware import X402PaymentMiddleware
         from ag402_core.payment.solana_adapter import MockSolanaAdapter
         from ag402_core.wallet.agent_wallet import AgentWallet
+
         from tests.conftest import _make_config
 
         config = _make_config(mode=RunMode.TEST)
