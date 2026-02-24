@@ -20,12 +20,10 @@ from __future__ import annotations
 import json
 import os
 import threading
-import time
 from decimal import Decimal
 
 import pytest
-
-from ag402_core.wallet.agent_wallet import AgentWallet, InsufficientBalance
+from ag402_core.wallet.agent_wallet import AgentWallet
 
 # ---------------------------------------------------------------------------
 # Global timeout for every test in this module (seconds)

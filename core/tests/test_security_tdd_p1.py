@@ -209,9 +209,7 @@ async def test_export_path_traversal_dotdot(wallet, tmp_path, monkeypatch):
 
     async def patched_export(self, path, format="json"):
         """Temporarily narrow allowed dirs for testing."""
-        import csv as csv_module
         import json as json_module
-        import tempfile
 
         resolved = os.path.realpath(path)
         allowed_dirs = [os.path.realpath(str(narrow_dir))]
@@ -507,10 +505,9 @@ def test_monkey_context_manager_on_exception():
     from ag402_core import monkey
 
     monkey.disable()
-    with pytest.raises(RuntimeError):
-        with monkey.enabled():
-            assert monkey.is_enabled()
-            raise RuntimeError("test error")
+    with pytest.raises(RuntimeError), monkey.enabled():
+        assert monkey.is_enabled()
+        raise RuntimeError("test error")
 
     assert not monkey.is_enabled()
 

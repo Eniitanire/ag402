@@ -10,8 +10,6 @@ Coverage:
 
 from __future__ import annotations
 
-import asyncio
-import json
 import os
 import time
 from decimal import Decimal
@@ -322,8 +320,8 @@ async def test_gateway_x402_without_replay_headers(gateway_client):
 
 async def test_gateway_x402_with_replay_headers(tmp_path):
     """x402 auth with valid replay headers should proceed to verification."""
-    from ag402_mcp.gateway import X402Gateway
     from ag402_core.security.replay_guard import generate_replay_headers
+    from ag402_mcp.gateway import X402Gateway
     from httpx import ASGITransport, AsyncClient
 
     os.environ["X402_MODE"] = "test"
@@ -401,8 +399,8 @@ async def test_gateway_metrics_increment(gateway_client):
 
 async def test_gateway_header_whitelist(tmp_path):
     """Dangerous headers should not be forwarded to upstream."""
-    from ag402_mcp.gateway import X402Gateway
     from ag402_core.security.replay_guard import generate_replay_headers
+    from ag402_mcp.gateway import X402Gateway
     from httpx import ASGITransport, AsyncClient
 
     os.environ["X402_MODE"] = "test"
