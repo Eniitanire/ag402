@@ -6,7 +6,7 @@
   </p>
   <p align="center">
     <a href="https://github.com/AetherCore-Dev/ag402/actions/workflows/ci.yml"><img src="https://github.com/AetherCore-Dev/ag402/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-    <img src="https://img.shields.io/badge/tests-500%2B_passing-brightgreen" alt="Tests" />
+    <img src="https://img.shields.io/badge/tests-562%2B_passing-brightgreen" alt="Tests" />
     <img src="https://img.shields.io/badge/coverage-90%25-brightgreen" alt="Coverage" />
     <img src="https://img.shields.io/pypi/v/ag402-core" alt="PyPI" />
     <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python" />
@@ -336,6 +336,8 @@ All settings are managed via environment variables or the `~/.ag402/.env` file (
 | `X402_PER_MINUTE_COUNT` | `5` | Per-minute transaction count (hard ceiling 50) |
 | `X402_CIRCUIT_BREAKER_THRESHOLD` | `3` | Consecutive failure threshold for circuit breaker |
 | `X402_FALLBACK_API_KEY` | — | Bearer token (dual-mode for non-x402 APIs) |
+| `X402_PRIORITY_FEE` | `0` | Priority fee in microlamports (0 = disabled) |
+| `X402_COMPUTE_UNIT_LIMIT` | `0` | Compute unit limit per transaction (0 = default) |
 | `AG402_UNLOCK_PASSWORD` | — | Wallet unlock password (for Docker/CI automation) |
 
 ---
@@ -409,7 +411,9 @@ make coverage       # Coverage report
 | Security TDD P0 (LIKE injection, amount validation, crypto, breaker) | 30 | 98% |
 | Security TDD P1 (clock rollback, replay, traversal, fuzzing, SSRF) | 56 | 95% |
 | Security TDD P2 (persistent replay, exhaustion, fault injection, gateway) | 23 | 92% |
-| **Subtotal** | **500+** | **90%+** |
+| Concurrent payment tests (wallet races, budget guard, replay dedup) | 9 | 95% |
+| Mainnet smoke tests (self-transfer, priority fees, on-chain verify) | 5 | — |
+| **Subtotal** | **562+** | **90%+** |
 
 ### On-chain Integration Tests
 
@@ -419,7 +423,7 @@ make coverage       # Coverage report
 | Devnet (Solana public testnet) | 26 | devnet RPC | ✅ Nightly |
 | **Subtotal** | **49** | | |
 
-> **Total: 77 on-chain + 430+ unit + 109 security TDD = 500+ tests**
+> **Total: 77 on-chain + 470+ unit + 109 security TDD = 562+ tests**
 
 ### Test Infrastructure
 

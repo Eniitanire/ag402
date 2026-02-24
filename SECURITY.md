@@ -39,7 +39,9 @@ Please include:
 - **Configurable Finality**: SolanaAdapter supports "confirmed" (fast) or "finalized" (safe) commitment levels for chain reorg protection. Returns `confirmation_status` ("confirmed" | "sent") in PaymentResult for clarity.
 - **Localhost Detection**: Challenge validator uses `ipaddress` module for complete loopback/local address detection (IPv4, IPv6, 0.0.0.0).
 - **Gateway Rate Limiting**: IP-based sliding-window rate limiter (configurable, default 60 req/min) returns HTTP 429 to prevent resource exhaustion.
-- **RPC Retry + Failover**: SolanaAdapter automatically retries failed RPC calls with exponential backoff, then fails over to backup RPC endpoint (`SOLANA_RPC_BACKUP_URL`). Prevents single-point-of-failure on RPC outages.
+- **RPC Retry + Failover**: SolanaAdapter automatically retries failed RPC calls with exponential backoff, then fails over to backup RPC endpoint (`SOLANA_RPC_BACKUP_URL`). Full failover coverage for `pay()`, `check_balance()`, and `verify_payment()`. Prevents single-point-of-failure on RPC outages.
+- **Transaction Idempotency**: Unique `request_id` is embedded in every Solana transaction memo (`Ag402-v1|<request_id>`). Gateway-side `PersistentReplayGuard` deduplicates payment proofs by `tx_hash`, preventing replay attacks and double-counting.
+- **Priority Fees**: Configurable `computeBudget` and `SetComputeUnitPrice` instructions ensure reliable transaction confirmation during Solana network congestion.
 
 ## V1 Security Audit Summary
 
@@ -69,6 +71,16 @@ Source code fixes:
 - **Negative/zero amount bypass**: `deposit()` and `deduct()` now reject `amount <= 0` with `ValueError`
 
 Total: **500 tests** passing (391 existing + 109 new security TDD), 0 regressions.
+
+## V1.6 Security Enhancements (2026-02-24)
+
+- **Transaction idempotency (F3)**: `request_id` in memo + `PersistentReplayGuard` tx_hash deduplication on gateway
+- **Priority fees (F4)**: Prevents transaction starvation during congestion
+- **Full RPC failover (F5)**: All Solana operations (`pay`, `check_balance`, `verify_payment`) covered
+- 9 concurrent payment tests validate race-condition safety
+- 5 mainnet smoke tests for real-chain verification
+
+Total: **562+ tests** passing, 0 regressions.
 
 ## Responsible Disclosure
 
