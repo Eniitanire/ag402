@@ -9,13 +9,14 @@ Design principles:
 - Non-402 responses are passed through **completely untouched** (no exception swallowing)
 - Original exception stacks are preserved exactly
 - Provides enable(), disable(), and enabled() context manager
-- Thread-safe via a simple boolean flag
+- Thread-safe via a lock and reference-counted enable/disable
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import functools
 import logging
 import threading
@@ -27,12 +28,19 @@ logger = logging.getLogger(__name__)
 # ─── State ───────────────────────────────────────────────────────────
 
 _lock = threading.Lock()
-_enabled: bool = False
+_enable_depth: int = 0  # reference counter — patched while > 0
 _patched_httpx: bool = False
 _patched_requests: bool = False
 _original_httpx_send: Any = None
 _original_requests_send: Any = None
 _middleware: Any = None  # X402PaymentMiddleware instance (lazy-created)
+_middleware_init_lock: asyncio.Lock | None = None  # async lock for init serialization
+
+# Re-entrancy guard: prevents middleware's own httpx requests from being
+# intercepted by _patched_send, which would cause infinite recursion.
+_handling_payment: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "_handling_payment", default=False
+)
 
 
 # ─── Public API ──────────────────────────────────────────────────────
@@ -48,42 +56,51 @@ def enable(
     Monkey-patches httpx.AsyncClient.send and requests.Session.send.
     Non-402 responses are completely transparent — no behavior change.
 
+    Reference-counted: nested enable() calls are safe. Each enable()
+    must be paired with a disable() — patches are removed only when the
+    count returns to zero.
+
     Args:
         wallet_db: Optional wallet DB path. Defaults to ~/.ag402/wallet.db.
         config: Optional X402Config instance. Defaults to load_config().
     """
-    global _enabled
+    global _enable_depth
     with _lock:
-        if _enabled:
-            logger.debug("ag402.enable() called but already enabled — no-op")
+        _enable_depth += 1
+        if _enable_depth > 1:
+            logger.debug("ag402.enable() called (depth=%d)", _enable_depth)
             return
 
         _ensure_middleware(wallet_db=wallet_db, config=config)
         _patch_httpx()
         _patch_requests()
-        _enabled = True
     logger.info("Ag402 enabled — x402 auto-payment active for all HTTP clients")
 
 
 def disable() -> None:
     """Disable automatic x402 payment and restore original HTTP behavior.
 
-    Safe to call even if not currently enabled (no-op).
+    Decrements the reference counter. Patches are only removed when the
+    counter reaches zero. Safe to call even if not currently enabled (no-op).
     """
-    global _enabled
+    global _enable_depth
     with _lock:
-        if not _enabled:
+        if _enable_depth <= 0:
+            return
+
+        _enable_depth -= 1
+        if _enable_depth > 0:
+            logger.debug("ag402.disable() called (depth=%d, still active)", _enable_depth)
             return
 
         _unpatch_httpx()
         _unpatch_requests()
-        _enabled = False
     logger.info("Ag402 disabled — original HTTP behavior restored")
 
 
 def is_enabled() -> bool:
     """Check if ag402 auto-payment is currently active."""
-    return _enabled
+    return _enable_depth > 0
 
 
 @contextlib.contextmanager
@@ -149,12 +166,28 @@ def _ensure_middleware(
 
 
 async def _get_initialized_middleware() -> Any:
-    """Get middleware with initialized wallet (async)."""
-    global _middleware
+    """Get middleware with initialized wallet (async).
+
+    Uses an asyncio.Lock to prevent concurrent callers from both running
+    init_db() and auto-depositing test funds at the same time.
+    """
+    global _middleware, _middleware_init_lock
     if _middleware is None:
         raise RuntimeError("ag402 not enabled — call ag402.enable() first")
 
-    if not getattr(_middleware, "_wallet_initialized", False):
+    # Fast path: already initialized
+    if getattr(_middleware, "_wallet_initialized", False):
+        return _middleware
+
+    # Lazy-create the lock (must happen inside an event loop)
+    if _middleware_init_lock is None:
+        _middleware_init_lock = asyncio.Lock()
+
+    async with _middleware_init_lock:
+        # Double-check after acquiring lock
+        if getattr(_middleware, "_wallet_initialized", False):
+            return _middleware
+
         await _middleware.wallet.init_db()
 
         # Auto-deposit test funds if in test mode
@@ -198,7 +231,13 @@ def _patch_httpx() -> None:
 
         # Only intercept 402 — everything else passes through untouched
         # (safe for streaming: we never call .read()/.json() on non-402 responses)
-        if response.status_code != 402 or not _enabled:
+        if response.status_code != 402 or not is_enabled():
+            return response
+
+        # Re-entrancy guard: if we're already handling a payment (i.e. this
+        # request was made by the middleware itself), skip interception to
+        # prevent infinite recursion.
+        if _handling_payment.get():
             return response
 
         # Check for x402 challenge
@@ -216,6 +255,8 @@ def _patch_httpx() -> None:
         )
 
         # Use the middleware to handle payment + retry
+        # Set re-entrancy guard so middleware's internal httpx calls skip interception.
+        token = _handling_payment.set(True)
         try:
             mw = await _get_initialized_middleware()
             result = await mw.handle_request(
@@ -243,6 +284,8 @@ def _patch_httpx() -> None:
             # DO NOT swallow the exception context — log it for debugging
             logger.exception("[ag402] Payment handling failed — returning original 402")
             return response
+        finally:
+            _handling_payment.reset(token)
 
     httpx.AsyncClient.send = _patched_send  # type: ignore[assignment]
     _patched_httpx = True
@@ -294,7 +337,7 @@ def _patch_requests() -> None:
         response = _original_requests_send(self, request, **kwargs)
 
         # Only intercept 402 — everything else passes through untouched
-        if response.status_code != 402 or not _enabled:
+        if response.status_code != 402 or not is_enabled():
             return response
 
         # Check for x402 challenge
@@ -370,14 +413,21 @@ async def _handle_payment_for_requests(
     method: str, url: str, headers: dict, body: Any,
 ) -> Any:
     """Async helper for requests monkey-patch."""
-    mw = await _get_initialized_middleware()
-    body_bytes = None
-    if body:
-        if isinstance(body, bytes):
-            body_bytes = body
-        elif isinstance(body, str):
-            body_bytes = body.encode()
-    return await mw.handle_request(method=method, url=url, headers=headers, body=body_bytes)
+    # Set re-entrancy guard so middleware's internal httpx calls skip interception.
+    # This is needed because asyncio.run() creates a fresh context where
+    # _handling_payment defaults to False.
+    token = _handling_payment.set(True)
+    try:
+        mw = await _get_initialized_middleware()
+        body_bytes = None
+        if body:
+            if isinstance(body, bytes):
+                body_bytes = body
+            elif isinstance(body, str):
+                body_bytes = body.encode()
+        return await mw.handle_request(method=method, url=url, headers=headers, body=body_bytes)
+    finally:
+        _handling_payment.reset(token)
 
 
 def _unpatch_requests() -> None:
