@@ -82,6 +82,16 @@ Total: **500 tests** passing (391 existing + 109 new security TDD), 0 regression
 
 Total: **562+ tests** passing, 0 regressions.
 
+## V1.7 Bug Fixes (2026-02-26)
+
+- **Docker serve binding**: Default host changed to `0.0.0.0` with `--host` CLI argument
+- **aiosqlite event loop**: Single `asyncio.run()` + `uvicorn.Server` prevents event loop mismatch
+- **Permission pre-check**: `PersistentReplayGuard.init_db()` validates directory write access
+- **Doctor gateway checks**: Port availability, data dir writability, backend reachability
+- 13 new tests for issue fixes
+
+Total: **575+ tests** passing, 0 regressions.
+
 ## Responsible Disclosure
 
 We follow a responsible disclosure process. After a fix is available, we will:

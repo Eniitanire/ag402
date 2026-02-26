@@ -1,5 +1,5 @@
 """open402: Reference implementation of the x402 payment protocol."""
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 
 from open402.headers import (
     ParsedExtensionHeaders,
