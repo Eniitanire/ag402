@@ -340,6 +340,18 @@ All settings are managed via environment variables or the `~/.ag402/.env` file (
 | `X402_COMPUTE_UNIT_LIMIT` | `0` | Compute unit limit per transaction (0 = default) |
 | `AG402_UNLOCK_PASSWORD` | — | Wallet unlock password (for Docker/CI automation) |
 
+### Configuration Loading Order
+
+Configuration is loaded from three sources with the following priority (highest to lowest):
+
+1. **CLI arguments** (`--price`, `--address`, `--host`, etc.) — always wins
+2. **Environment variables** (`X402_MODE`, `SOLANA_PRIVATE_KEY`, etc.) — overrides `.env` file
+3. **`~/.ag402/.env` file** — loaded at startup via `load_dotenv()`, does **not** override existing env vars
+
+In practice: `ag402 setup` writes default settings to `~/.ag402/.env`. You can override any value by setting the corresponding environment variable (e.g. `export X402_MODE=production`), and CLI arguments override both.
+
+For Docker deployments, pass environment variables via `docker-compose.yml` `environment:` section or `docker run -e`. The `~/.ag402/.env` file inside the container is only used if the environment variable is not already set.
+
 ---
 
 ## 🐳 Docker

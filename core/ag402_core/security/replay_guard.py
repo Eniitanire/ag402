@@ -121,6 +121,14 @@ class PersistentReplayGuard:
         if db_dir and not os.path.exists(db_dir):
             os.makedirs(db_dir, exist_ok=True)
 
+        # Pre-flight permission check: provide a clear error message instead of
+        # the opaque sqlite3.OperationalError when the directory is not writable.
+        if db_dir and os.path.isdir(db_dir) and not os.access(db_dir, os.W_OK):
+            raise PermissionError(
+                f"Cannot write to {db_dir} — check directory permissions. "
+                f"Current user uid: {os.getuid()}, dir owner uid: {os.stat(db_dir).st_uid}"
+            )
+
         self._db = await aiosqlite.connect(self.db_path, timeout=10.0)
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute("PRAGMA busy_timeout=5000")

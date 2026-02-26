@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`ag402 serve` Docker binding (BUG-1)**: Changed default host from `127.0.0.1` to `0.0.0.0` and added `--host` CLI argument — Docker/Kubernetes deployments now work out of the box without workarounds
+- **aiosqlite event loop crash (BUG-2)**: Replaced `uvicorn.run()` with `asyncio.run()` + `uvicorn.Server` in `_cmd_serve()` — all async initialization and serving now run in a single event loop, eliminating `RuntimeError: Event loop is closed` crashes with uvloop/aiosqlite
+- **PersistentReplayGuard permission check (BUG-3)**: Added `os.access(db_dir, os.W_OK)` pre-flight check in `init_db()` — raises a clear `PermissionError` with uid info instead of the opaque `sqlite3.OperationalError`
+
+### Added
+
+- `--host` argument for `ag402 serve` command (default: `0.0.0.0`) — consistent with `ag402-gateway` CLI
+- **`ag402 doctor` gateway checks**: Now verifies gateway port availability, `~/.ag402` directory writability, and backend URL reachability
+- **Configuration loading order** documentation in README: CLI args > env vars > `~/.ag402/.env`
+- 13 new tests in `test_issue_fixes.py`: `--host` argument parsing (4), event loop pattern verification (1), permission check (4), doctor gateway checks (4)
+- Total test count: **575+ tests** (30 protocol + 501 core + 5 MCP + 39 client MCP), all passing
+
 ## [0.1.6] - 2026-02-24
 
 ### Added

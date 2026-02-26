@@ -141,7 +141,7 @@ Devnet tested (17 on-chain tests + 28 resilience tests + 4 devnet timing tests).
 - **Interactive setup wizard**: `ag402 setup` (role selection + encryption + budget)
 - **Agent integration**: `ag402 run -- python agent.py`
 - **Config management**: `ag402 env show/set`
-- **Provider mode**: `ag402 serve` (auto-starts built-in demo backend + custom request logging)
+- **Provider mode**: `ag402 serve` (auto-starts built-in demo backend + custom request logging, `--host 0.0.0.0` for Docker)
 - **Buyer mode**: `ag402 pay <url>` (6-step x402 negotiation visualization)
 - **Production migration**: `ag402 upgrade`
 - **Beautiful help**: `ag402 help` (categorized with usage hints)

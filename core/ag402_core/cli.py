@@ -138,6 +138,8 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- serve (NEW — provider mode gateway) ---
     serve_p = sub.add_parser("serve", help="Start payment gateway (provider mode)")
     serve_p.add_argument("--target", default="", help="Backend API URL")
+    serve_p.add_argument("--host", default="0.0.0.0",
+                         help="Host to bind (default: 0.0.0.0, use 127.0.0.1 for local-only)")
     serve_p.add_argument("--port", type=int, default=4020, help="Gateway port")
     serve_p.add_argument("--price", default="0.02", help="Price per API call (USDC)")
     serve_p.add_argument("--address", default="", help="Receiving wallet address")
@@ -567,6 +569,7 @@ def _check_port_available(host: str, port: int) -> bool:
 def _cmd_serve(args) -> None:
     """Start the payment gateway in provider mode."""
     target = args.target
+    host = getattr(args, "host", "0.0.0.0")
     port = args.port
     price = args.price
     address = args.address
@@ -710,7 +713,7 @@ def _cmd_serve(args) -> None:
             print(f"  {icon} {_dim(_client)} {_bold(_method)} {_url} → {tag} {_dim(f'({_elapsed:.2f}s)')}")
             return response
 
-        print(f"  {_green('✓')} Gateway started: {_cyan(f'http://127.0.0.1:{port}')}")
+        print(f"  {_green('✓')} Gateway started: {_cyan(f'http://{host}:{port}')}")
         print()
         print(f"  {_bold('Workflow')}")
         print(f"    Client → {_yellow('402 Payment Required')} → Client pays → Gateway verifies → {_green('200 OK')}")
@@ -718,7 +721,7 @@ def _cmd_serve(args) -> None:
         print("  " + "─" * 55)
         print(f"  {_bold('Try it')} (open another terminal):")
         print()
-        gw_url = f"http://127.0.0.1:{port}/"
+        gw_url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}/"
         print(f"    {_green('▶')} {_cyan('ag402 pay ' + gw_url)}")
         print(f"      {_dim('↑ Buyer view: discover price → pay → get data')}")
         print()
@@ -728,9 +731,12 @@ def _cmd_serve(args) -> None:
         print(f"  {_bold('Request log:')}")
         print()
 
-        # Suppress default uvicorn access logs; we handle logging above
+        # Use asyncio.run() with uvicorn.Server to ensure a single event loop,
+        # avoiding aiosqlite background thread conflicts (BUG-2: event loop mismatch).
         try:
-            uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+            config = uvicorn.Config(app, host=host, port=port, log_level="warning")
+            server = uvicorn.Server(config)
+            asyncio.run(server.serve())
         finally:
             # Ensure built-in demo server stops cleanly on exit
             if builtin_server is not None:
@@ -1260,6 +1266,57 @@ def _cmd_doctor() -> None:
         else:
             print(f"  {_yellow('⚠')}  SOLANA_PRIVATE_KEY: not set (ok for test mode)")
             warnings.append("No private key (ok for test)")
+
+    print()
+
+    # --- Gateway runtime checks ---
+    print(f"  {_bold('Gateway Environment')}")
+    print()
+
+    # 1. Default gateway port bindability
+    gw_port = config.gateway_port
+    try:
+        if _check_port_available("0.0.0.0", gw_port):
+            print(f"  {_green('✓')}  Gateway port {gw_port}: available")
+        else:
+            print(f"  {_yellow('⚠')}  Gateway port {gw_port}: already in use")
+            warnings.append(f"Port {gw_port} in use (gateway may fail to start)")
+    except Exception:
+        print(f"  {_yellow('⚠')}  Gateway port {gw_port}: unable to check")
+        warnings.append(f"Could not check port {gw_port}")
+
+    # 2. SQLite data directory writability
+    _ag402_dir = os.path.expanduser("~/.ag402")
+    if os.path.isdir(_ag402_dir):
+        if os.access(_ag402_dir, os.W_OK):
+            print(f"  {_green('✓')}  Data directory writable: {_ag402_dir}")
+        else:
+            print(f"  {_red('✗')}  Data directory NOT writable: {_ag402_dir}")
+            issues.append("~/.ag402 is not writable (SQLite will fail)")
+    else:
+        print(f"  {_yellow('⚠')}  Data directory does not exist: {_ag402_dir}")
+        warnings.append("~/.ag402 not created yet — run: ag402 init")
+
+    # 3. Backend target URL reachability (if configured)
+    from ag402_core.env_manager import parse_env_file as _doc_parse_env
+    _doc_env = _doc_parse_env()
+    _doc_target = _doc_env.get("AG402_TARGET_API", "")
+    if _doc_target:
+        try:
+            from urllib.parse import urlparse
+            _parsed = urlparse(_doc_target)
+            _thost = _parsed.hostname or "localhost"
+            _tport = _parsed.port or 80
+            if not _check_port_available(_thost, _tport):
+                print(f"  {_green('✓')}  Backend reachable: {_doc_target}")
+            else:
+                print(f"  {_yellow('⚠')}  Backend unreachable: {_doc_target}")
+                warnings.append(f"Backend {_doc_target} is not responding")
+        except Exception:
+            print(f"  {_yellow('⚠')}  Backend check failed: {_doc_target}")
+            warnings.append(f"Could not check backend {_doc_target}")
+    else:
+        print(f"  {_dim('·')}  Backend URL: not configured (set AG402_TARGET_API in .env)")
 
     print()
 
