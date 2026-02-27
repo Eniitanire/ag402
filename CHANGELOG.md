@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-02-27
+
+### Added
+
+- **Google Colab notebook** (`examples/ag402_quickstart.ipynb`): One-click interactive demo — runs the full x402 payment flow in-browser with zero local setup. 18 cells covering 402 rejection, auto-pay, wallet inspection, and a "try it yourself" interactive cell
+- **"Open in Colab" badge** in README header and Quick Start section
+- **Real-World Cases section** in README: references [token-bugcheck](https://github.com/AetherCore-Dev/token-bugcheck) production case study with seller/buyer code snippet, plus local weather demo
+
 ## [0.1.7] - 2026-02-26
 
 ### Fixed

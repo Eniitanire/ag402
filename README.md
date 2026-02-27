@@ -9,6 +9,7 @@
     <img src="https://img.shields.io/badge/tests-562%2B_passing-brightgreen" alt="Tests" />
     <img src="https://img.shields.io/badge/coverage-90%25-brightgreen" alt="Coverage" />
     <img src="https://img.shields.io/pypi/v/ag402-core" alt="PyPI" />
+    <a href="https://colab.research.google.com/github/AetherCore-Dev/ag402/blob/main/examples/ag402_quickstart.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab" /></a>
     <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python" />
     <a href="https://github.com/AetherCore-Dev/ag402/blob/main/LICENSE"><img src="https://img.shields.io/github/license/AetherCore-Dev/ag402" alt="License" /></a>
   </p>
@@ -36,6 +37,8 @@ ag402 demo         # Watch the full auto-pay flow in action
 ```
 
 That's it. No Solana wallet needed. No config files to edit. No environment variables to set.
+
+> **Try it online**: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/AetherCore-Dev/ag402/blob/main/examples/ag402_quickstart.ipynb) — zero install, run in browser
 
 ### 🔍 Hands-on Protocol Walkthrough (Recommended)
 
@@ -442,6 +445,35 @@ make coverage       # Coverage report
 - **CI**: GitHub Actions runs unit tests on every PR (Python 3.10/3.11/3.12), localnet integration on every PR, devnet integration nightly
 - **Flaky test handling**: Network-sensitive devnet tests use `@pytest.mark.flaky(reruns=2)` via `pytest-rerunfailures`
 - **Performance baseline**: `conftest_perf.py` plugin records test durations to `.perf-baseline.json`; use `--perf-compare` to detect latency regressions
+
+---
+
+## Real-World Cases
+
+### Token RugCheck — Solana Token Safety Audit
+
+[**token-bugcheck**](https://github.com/AetherCore-Dev/token-bugcheck) is a production Solana token safety audit service powered by ag402. AI Agents pay **0.05 USDC per audit** to detect rug pulls before purchasing tokens.
+
+```python
+# Seller: wrap your existing audit API with a paywall (one command)
+ag402 serve --target http://localhost:8000 --price 0.05 --address <YourWallet>
+
+# Buyer: your AI agent code — ZERO changes to business logic
+import ag402_core
+ag402_core.enable()
+result = httpx.get("https://audit-api.example.com/check?token=So11...")
+# 402 → auto-pay 0.05 USDC → retry → get audit report. Transparent.
+```
+
+- **Three-layer audit**: Action (machine verdict) → Analysis (LLM summary) → Evidence (raw data)
+- **Data sources**: RugCheck.xyz + DexScreener + GoPlus Security (concurrent fetch, graceful degradation)
+- **Deployment**: Docker — ag402 gateway on port 8001, audit server on port 8000
+
+> **Any HTTP API becomes a paid service. Any AI agent becomes a paying customer. Zero changes to business logic on either side.**
+
+### Weather API Demo (Local, Built-in)
+
+Run `ag402 demo` to see the full x402 payment flow locally with mock funds. Or try the [interactive Colab notebook](https://colab.research.google.com/github/AetherCore-Dev/ag402/blob/main/examples/ag402_quickstart.ipynb) in your browser.
 
 ---
 
