@@ -456,7 +456,7 @@ def _generate_devnet_keypair(result: SetupResult) -> None:
         print(f"  {bold('Public key:')} {pubkey}")
         print(f"  {dim('Keypair saved:')} {keypair_path}")
         print()
-        print(f"  Fund this account for devnet testing:")
+        print("  Fund this account for devnet testing:")
         print(f"    {cyan(f'solana airdrop 2 {pubkey} --url https://api.devnet.solana.com')}")
     except ImportError:
         print(f"  {yellow('⚠')} solders package not installed, generating placeholder key")

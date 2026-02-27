@@ -409,7 +409,11 @@ def _cmd_mcp_config(args) -> None:
 
 def _cmd_setup(args) -> None:
     """Launch the interactive setup wizard."""
-    from ag402_core.setup_wizard import init_wallet_after_setup, print_env_examples, run_setup_wizard
+    from ag402_core.setup_wizard import (
+        init_wallet_after_setup,
+        print_env_examples,
+        run_setup_wizard,
+    )
 
     if getattr(args, "show_examples", False):
         print_env_examples()
