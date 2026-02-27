@@ -95,13 +95,19 @@ class X402Config:
     solana_rpc_backup_url: str = field(
         default_factory=lambda: os.getenv("SOLANA_RPC_BACKUP_URL", "")
     )
-    usdc_mint_address: str = field(
-        default_factory=lambda: os.getenv(
-            "USDC_MINT_ADDRESS",
-            # Solana devnet USDC mint
-            "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
-        )
-    )
+    usdc_mint_address: str = field(default_factory=lambda: os.getenv("USDC_MINT_ADDRESS", ""))
+
+    def __post_init__(self) -> None:
+        # Auto-select USDC mint based on network if not explicitly set.
+        # Prevents accidentally using devnet mint on mainnet (money loss!).
+        if not self.usdc_mint_address:
+            _network_mints = {
+                NetworkMode.DEVNET: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+                NetworkMode.MAINNET: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            }
+            mint = _network_mints.get(self.network, "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU")
+            # frozen dataclass — use object.__setattr__
+            object.__setattr__(self, "usdc_mint_address", mint)
 
     # --- Budget ---
     single_tx_limit: float = field(

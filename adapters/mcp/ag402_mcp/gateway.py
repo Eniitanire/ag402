@@ -25,7 +25,11 @@ from contextlib import asynccontextmanager
 import httpx
 from ag402_core.gateway.auth import PaymentVerifier
 from ag402_core.security.rate_limiter import RateLimiter
-from ag402_core.security.replay_guard import PersistentReplayGuard, ReplayGuard
+from ag402_core.security.replay_guard import (
+    PersistentReplayGuard,
+    ReplayGuard,
+    TxHashStatus,
+)
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 from open402.headers import build_www_authenticate
@@ -228,51 +232,78 @@ class X402Gateway:
                     content={"error": "Payment verification failed", "detail": result.error},
                 )
 
-            # 5b. Persistent tx_hash replay check (survives restarts)
+            # 5b. Persistent tx_hash replay check with grace window
             #
-            # TODO(P1-RECEIPT-REUSE): Paid-receipt grace window (target: pre-mainnet)
-            # ──────────────────────────────────────────────────────────────
-            # PROBLEM: tx_hash is marked "consumed" HERE, BEFORE _proxy_request().
-            # If the upstream returns 502 / times out, the buyer has paid on-chain
-            # but cannot retry — the same tx_hash is rejected as a replay.
-            # This is a real money-loss path in production.
-            #
-            # SOLUTION (3 parts, must be done together):
-            #
-            # 1. RESPONSE CACHE — After a successful _proxy_request(), cache the
-            #    response (status, headers, body) keyed by tx_hash with a 5-minute
-            #    TTL. When a duplicate tx_hash arrives within the window, return
-            #    the cached response directly instead of rejecting with 402.
-            #    Data structure: SQLite table or in-memory LRU with TTL.
-            #
-            # 2. GRACE WINDOW — Change check_and_record_tx() to return a 3-state
-            #    result: NEW / WITHIN_GRACE / EXPIRED. Within grace (e.g. 300s),
-            #    the gateway should look up the cached response. After grace,
-            #    reject as today.
-            #
-            # 3. PROXY FAILURE HANDLING — If _proxy_request() fails AFTER the
-            #    tx_hash is recorded, mark it as "consumed_but_undelivered" so
-            #    the buyer can retry. Do NOT cache the 502 error response.
-            #
-            # Estimated scope: ~200 lines in this file + ~100 lines in
-            # replay_guard.py. See also the companion TODOs in:
-            #   - core/ag402_core/middleware/x402_middleware.py  (client retry)
-            #   - core/ag402_core/wallet/payment_order.py       (stale delivery worker)
-            # ──────────────────────────────────────────────────────────────
-            is_new = await self._persistent_guard.check_and_record_tx(result.tx_hash)
-            if not is_new:
-                logger.warning("[GATEWAY] Duplicate tx_hash rejected: %s", result.tx_hash[:32])
+            # Three-state logic:
+            #   NEW          → first time, record and proxy
+            #   WITHIN_GRACE → previously consumed but delivery may have failed,
+            #                   serve cached response or re-proxy
+            #   EXPIRED      → grace window expired, reject as replay
+            tx_status = await self._persistent_guard.check_tx_status(result.tx_hash)
+
+            if tx_status == TxHashStatus.EXPIRED:
+                logger.warning("[GATEWAY] Expired tx_hash rejected: %s", result.tx_hash[:32])
                 self._metrics["replays_rejected"] += 1
                 return self._build_402_response()
+
+            if tx_status == TxHashStatus.WITHIN_GRACE:
+                # Buyer is retrying a previously consumed tx_hash within grace window.
+                # Try to serve cached response first (if upstream succeeded before).
+                cached = await self._persistent_guard.get_cached_response(result.tx_hash)
+                if cached:
+                    status_code, cached_headers, cached_body = cached
+                    logger.info(
+                        "[GATEWAY] Serving cached response for tx_hash retry: %s (status=%d)",
+                        result.tx_hash[:32], status_code,
+                    )
+                    self._metrics["receipts_reused"] = self._metrics.get("receipts_reused", 0) + 1
+                    return Response(
+                        content=cached_body,
+                        status_code=status_code,
+                        headers=cached_headers,
+                    )
+                # No cached response — upstream previously failed, re-proxy
+                logger.info(
+                    "[GATEWAY] Re-proxying for tx_hash within grace window: %s",
+                    result.tx_hash[:32],
+                )
+            else:
+                # NEW — atomically record the tx_hash.
+                # check_and_record_tx uses INSERT OR IGNORE, so if a concurrent
+                # request recorded first, is_new=False. In that case, treat it
+                # as WITHIN_GRACE (the other request may still be in flight).
+                is_new = await self._persistent_guard.check_and_record_tx(result.tx_hash)
+                if not is_new:
+                    # Concurrent request recorded it first — check if it was already delivered.
+                    recheck = await self._persistent_guard.check_tx_status(result.tx_hash)
+                    if recheck == TxHashStatus.EXPIRED:
+                        self._metrics["replays_rejected"] += 1
+                        return self._build_402_response()
+                    # Otherwise it's WITHIN_GRACE — fall through to proxy
 
             # 6. Proxy the request to the target
             self._metrics["payments_verified"] += 1
             logger.info("[GATEWAY] Payment verified (tx: %s) -- proxying to %s", result.tx_hash, self.target_url)
             try:
-                return await self._proxy_request(request, path)
+                proxy_response = await self._proxy_request(request, path)
+                # Cache successful responses so grace-window retries get the same answer
+                if proxy_response.status_code < 400:
+                    await self._persistent_guard.mark_delivered(result.tx_hash)
+                    # Extract headers from the Response object
+                    resp_headers = {}
+                    if hasattr(proxy_response, 'headers') and proxy_response.headers:
+                        resp_headers = dict(proxy_response.headers)
+                    await self._persistent_guard.cache_response(
+                        result.tx_hash,
+                        proxy_response.status_code,
+                        resp_headers,
+                        proxy_response.body,
+                    )
+                return proxy_response
             except Exception as exc:
                 self._metrics["proxy_errors"] += 1
                 logger.error("[GATEWAY] Proxy error: %s", exc)
+                # Do NOT mark as delivered — buyer can retry within grace window
                 return JSONResponse(status_code=502, content={"error": "Bad Gateway"})
 
         return app

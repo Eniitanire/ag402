@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2026-02-27
+
+### Fixed
+
+- **Receipt-reuse money-loss path (P1-CRITICAL)**: Previously, if a buyer paid on-chain but the upstream API failed (502, timeout), the gateway rejected subsequent retries with the same tx_hash as "replay". The buyer lost money with no way to recover. Now uses a 3-state grace window (`NEW` / `WITHIN_GRACE` / `EXPIRED`) — buyers can retry within 5 minutes, and successful upstream responses are cached for idempotent replay
+- **TOCTOU race in gateway tx_hash recording**: `check_tx_status()` (SELECT) and `check_and_record_tx()` (INSERT) were not atomic — two concurrent requests could both pass the check. Fixed by verifying the `check_and_record_tx()` return value (`INSERT OR IGNORE` atomicity) and rechecking status on conflict
+- **USDC mint address auto-selection for mainnet**: `USDC_MINT_ADDRESS` previously defaulted to devnet mint regardless of `X402_NETWORK`. Now auto-selects based on network mode: devnet → `4zMMC9...`, mainnet → `EPjFWdd5...`. Explicit env var still overrides. Prevents accidental use of devnet mint on mainnet (fund loss risk)
+- **Hardcoded private key in devnet_buyer_test.py**: Removed hardcoded Solana private key, replaced with `_require_env("SOLANA_PRIVATE_KEY")` that exits with a clear error message if not set
+
+### Added
+
+- **DeliveryWorker**: Background asyncio worker that retries stuck `DELIVERING` orders with exponential backoff (30s → 60s → 120s → 240s → 480s, max 5 retries). After exhaustion, orders transition to `FAILED` terminal state for manual review
+- **`FAILED` order state**: New terminal state in the payment order state machine. Orders that exhaust delivery retries are marked `FAILED` instead of staying stuck in `DELIVERING` forever
+- **Response caching for grace-window retries**: Gateway caches successful upstream responses (status, headers, body) in SQLite. Grace-window retries serve the cached response instead of re-proxying, ensuring idempotent behavior
+- **`PersistentReplayGuard` enhancements**: `check_tx_status()` for 3-state lookup, `mark_delivered()` to close the grace window, `cache_response()` / `get_cached_response()` for response caching, `response_cache` table created in `init_db()`
+- **`ag402-claude` adapter** (`adapters/claude_code/`): Claude Code hook-based integration for automatic x402 payment. Supports pre/post hook phases, detects 402 responses in tool output, auto-pays and returns the paid response. CLI entry point: `ag402-claude-hook`
+- **`ag402-openclaw` adapter** (`adapters/openclaw/`): OpenClaw bridge adapter via mcporter. Supports stdio (for mcporter) and HTTP proxy modes. Exposes `/proxy` endpoint for OpenClaw agents to make paid API calls. CLI entry point: `ag402-openclaw`
+- **`.env.example`**: Comprehensive template documenting all environment variables with descriptions, organized by category (mode, network, wallet, budget, gateway, security, E2E tests)
+- **27 receipt-reuse tests**: Full coverage of grace window logic, FAILED state machine, DeliveryWorker retry/exhaustion/backoff, middleware lifecycle, gateway integration, and end-to-end scenarios
+- Total test count: **602+ tests** (30 protocol + 528 core + 5 MCP + 39 client MCP), all passing
+
 ## [0.1.8] - 2026-02-27
 
 ### Added

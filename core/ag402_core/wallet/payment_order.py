@@ -7,14 +7,16 @@ States:
     DELIVERING        -> chain confirmed, retrying service API
     SUCCESS           -> service API returned 200, order complete
     REFUNDED          -> chain tx failed/reverted, local wallet refunded
+    FAILED            -> delivery retries exhausted, needs manual review
 
 Allowed transitions:
     CREATED           -> LOCAL_DEDUCTED
     LOCAL_DEDUCTED    -> CHAIN_BROADCASTED | REFUNDED (pay failure before broadcast)
     CHAIN_BROADCASTED -> DELIVERING | REFUNDED (chain reverted)
-    DELIVERING        -> SUCCESS | DELIVERING (retry idempotent)
+    DELIVERING        -> SUCCESS | DELIVERING (retry idempotent) | FAILED (retries exhausted)
     SUCCESS           -> (terminal)
     REFUNDED          -> (terminal)
+    FAILED            -> (terminal)
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ class OrderState(Enum):
     DELIVERING = "DELIVERING"
     SUCCESS = "SUCCESS"
     REFUNDED = "REFUNDED"
+    FAILED = "FAILED"
 
 
 # Valid state transitions: {from_state: {allowed_target_states}}
@@ -44,9 +47,10 @@ _ALLOWED_TRANSITIONS: dict[OrderState, set[OrderState]] = {
     OrderState.CREATED: {OrderState.LOCAL_DEDUCTED},
     OrderState.LOCAL_DEDUCTED: {OrderState.CHAIN_BROADCASTED, OrderState.REFUNDED},
     OrderState.CHAIN_BROADCASTED: {OrderState.DELIVERING, OrderState.REFUNDED},
-    OrderState.DELIVERING: {OrderState.SUCCESS, OrderState.DELIVERING},
+    OrderState.DELIVERING: {OrderState.SUCCESS, OrderState.DELIVERING, OrderState.FAILED},
     OrderState.SUCCESS: set(),      # terminal
     OrderState.REFUNDED: set(),     # terminal
+    OrderState.FAILED: set(),       # terminal — delivery retries exhausted
 }
 
 
@@ -263,29 +267,9 @@ class PaymentOrderStore:
     async def get_stale_deliveries(self, max_age_seconds: float = 60.0) -> list[PaymentOrder]:
         """Get orders in DELIVERING state older than max_age_seconds.
 
-        TODO(P1-RECEIPT-REUSE): Wire this into a delivery retry worker
-        ──────────────────────────────────────────────────────────────
-        This query method exists but is NEVER CALLED anywhere in the
-        codebase. It was designed to support a background worker that
-        retries stuck deliveries (payment succeeded on-chain, but the
-        API response was never received by the buyer).
-
-        To complete the feature:
-        1. Create ag402_core/delivery_worker.py — an asyncio background
-           task that calls this method every ~30s, retries each order's
-           original request with the existing payment proof, and
-           transitions to SUCCESS or a new FAILED terminal state.
-        2. Add FAILED to OrderState and _ALLOWED_TRANSITIONS:
-              DELIVERING → {SUCCESS, DELIVERING, FAILED}
-        3. Add max_retry_count (default 5) to config. After exhaustion,
-           move to FAILED and surface in `ag402 status`.
-        4. Start the worker in middleware __aenter__ or as part of
-           `ag402 run` lifecycle.
-
-        See companion TODOs:
-          - adapters/mcp/ag402_mcp/gateway.py  (response cache + grace window)
-          - core/ag402_core/middleware/x402_middleware.py (retry on failure)
-        ──────────────────────────────────────────────────────────────
+        Used by the delivery retry worker to find stuck orders that need
+        to be retried (payment succeeded on-chain, but the API response
+        was never received by the buyer).
         """
         cutoff = time() - max_age_seconds
         cursor = await self._db.execute(

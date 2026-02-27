@@ -5,15 +5,19 @@ Client side: inject X-x402-Timestamp and X-x402-Nonce into requests.
 Server side: reject requests older than replay_window_seconds or with duplicate nonces.
 
 P0-4: Added PersistentReplayGuard for tx_hash deduplication backed by SQLite.
+P1-RECEIPT-REUSE: Added grace window support — previously consumed tx_hashes can
+    be retried within a configurable window to handle upstream delivery failures.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import time
 import uuid
 from collections import OrderedDict
+from enum import Enum
 
 import aiosqlite
 
@@ -24,6 +28,9 @@ _MAX_NONCE_CACHE = 10_000
 
 # Max nonce length — reject oversized nonces to prevent memory abuse
 _MAX_NONCE_LENGTH = 128
+
+# Default grace window for tx_hash reuse (seconds)
+DEFAULT_RECEIPT_GRACE_SECONDS = 300  # 5 minutes
 
 
 class ReplayGuard:
@@ -105,15 +112,33 @@ class ReplayGuard:
             self._seen_nonces.popitem(last=False)
 
 
+class TxHashStatus(Enum):
+    """Result of checking a tx_hash against the persistent replay guard."""
+
+    NEW = "NEW"                      # Never seen before — record and allow
+    WITHIN_GRACE = "WITHIN_GRACE"    # Previously consumed, within grace window — allow retry
+    EXPIRED = "EXPIRED"              # Previously consumed, grace window expired — reject
+
+
 class PersistentReplayGuard:
     """SQLite-backed tx_hash deduplication for gateway replay protection.
 
     Unlike the in-memory ReplayGuard (for nonce checks), this persists
     consumed tx_hashes to disk so they survive process restarts.
+
+    Supports a grace window: when a tx_hash was previously consumed but the
+    upstream delivery failed, the buyer can retry with the same tx_hash
+    within ``grace_seconds``. After the grace window expires, retries are
+    rejected as replays.
     """
 
-    def __init__(self, db_path: str = "x402_replay.db") -> None:
+    def __init__(
+        self,
+        db_path: str = "x402_replay.db",
+        grace_seconds: float = DEFAULT_RECEIPT_GRACE_SECONDS,
+    ) -> None:
         self.db_path = db_path
+        self.grace_seconds = grace_seconds
         self._db: aiosqlite.Connection | None = None
 
     async def init_db(self) -> None:
@@ -136,13 +161,31 @@ class PersistentReplayGuard:
             """
             CREATE TABLE IF NOT EXISTS consumed_tx_hashes (
                 tx_hash TEXT PRIMARY KEY,
-                recorded_at REAL NOT NULL
+                recorded_at REAL NOT NULL,
+                delivered INTEGER NOT NULL DEFAULT 0
             )
             """
         )
         await self._db.execute(
             "CREATE INDEX IF NOT EXISTS idx_consumed_at ON consumed_tx_hashes(recorded_at)"
         )
+        # Response cache table for grace-window retries
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS response_cache (
+                tx_hash TEXT PRIMARY KEY,
+                status_code INTEGER NOT NULL,
+                headers TEXT NOT NULL,
+                body BLOB NOT NULL,
+                cached_at REAL NOT NULL
+            )
+            """
+        )
+        # Migrate: add 'delivered' column if it doesn't exist (upgrade from pre-grace schema)
+        with contextlib.suppress(Exception):
+            await self._db.execute(
+                "ALTER TABLE consumed_tx_hashes ADD COLUMN delivered INTEGER NOT NULL DEFAULT 0"
+            )
         await self._db.commit()
 
     async def close(self) -> None:
@@ -154,6 +197,33 @@ class PersistentReplayGuard:
         """Lazy-init DB connection if not yet initialized."""
         if self._db is None:
             await self.init_db()
+
+    async def check_tx_status(self, tx_hash: str) -> TxHashStatus:
+        """Check the status of a tx_hash without recording it.
+
+        Returns:
+            TxHashStatus.NEW if never seen.
+            TxHashStatus.WITHIN_GRACE if consumed but within grace window.
+            TxHashStatus.EXPIRED if consumed and grace window expired.
+        """
+        await self._ensure_db()
+        cursor = await self._db.execute(
+            "SELECT recorded_at, delivered FROM consumed_tx_hashes WHERE tx_hash = ?",
+            (tx_hash,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return TxHashStatus.NEW
+
+        recorded_at, delivered = row
+        # If already delivered successfully, treat as expired (no retry needed)
+        if delivered:
+            return TxHashStatus.EXPIRED
+
+        age = time.time() - recorded_at
+        if age <= self.grace_seconds:
+            return TxHashStatus.WITHIN_GRACE
+        return TxHashStatus.EXPIRED
 
     async def check_and_record_tx(self, tx_hash: str) -> bool:
         """Check if tx_hash is new; if so, record it.
@@ -167,7 +237,7 @@ class PersistentReplayGuard:
         """
         await self._ensure_db()
         cursor = await self._db.execute(
-            "INSERT OR IGNORE INTO consumed_tx_hashes (tx_hash, recorded_at) VALUES (?, ?)",
+            "INSERT OR IGNORE INTO consumed_tx_hashes (tx_hash, recorded_at, delivered) VALUES (?, ?, 0)",
             (tx_hash, time.time()),
         )
         await self._db.commit()
@@ -175,6 +245,60 @@ class PersistentReplayGuard:
         if not is_new:
             logger.warning("[REPLAY] Duplicate tx_hash rejected: %s", tx_hash[:32])
         return is_new
+
+    async def mark_delivered(self, tx_hash: str) -> None:
+        """Mark a tx_hash as successfully delivered.
+
+        Once marked, the grace window no longer applies — further retries
+        for this tx_hash will be rejected as EXPIRED.
+        """
+        await self._ensure_db()
+        await self._db.execute(
+            "UPDATE consumed_tx_hashes SET delivered = 1 WHERE tx_hash = ?",
+            (tx_hash,),
+        )
+        await self._db.commit()
+
+    async def get_cached_response(self, tx_hash: str) -> tuple[int, dict, bytes] | None:
+        """Retrieve a cached upstream response for a delivered tx_hash.
+
+        Returns:
+            (status_code, headers_dict, body_bytes) or None if not cached.
+        """
+        await self._ensure_db()
+        cursor = await self._db.execute(
+            "SELECT status_code, headers, body FROM response_cache WHERE tx_hash = ?",
+            (tx_hash,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+
+        import json
+        status_code = row[0]
+        headers = json.loads(row[1]) if row[1] else {}
+        body = row[2] if row[2] else b""
+        if isinstance(body, str):
+            body = body.encode()
+        return (status_code, headers, body)
+
+    async def cache_response(
+        self, tx_hash: str, status_code: int, headers: dict, body: bytes
+    ) -> None:
+        """Cache a successful upstream response for a tx_hash.
+
+        This allows the gateway to serve the cached response when a buyer
+        retries with the same tx_hash within the grace window.
+        """
+        await self._ensure_db()
+        import json
+
+        await self._db.execute(
+            "INSERT OR REPLACE INTO response_cache (tx_hash, status_code, headers, body, cached_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (tx_hash, status_code, json.dumps(headers), body, time.time()),
+        )
+        await self._db.commit()
 
     async def prune(self, max_age_seconds: float = 86400 * 7) -> int:
         """Remove tx_hashes older than max_age_seconds.
@@ -187,6 +311,12 @@ class PersistentReplayGuard:
             "DELETE FROM consumed_tx_hashes WHERE recorded_at < ?",
             (cutoff,),
         )
+        # Also prune response cache
+        with contextlib.suppress(Exception):
+            await self._db.execute(
+                "DELETE FROM response_cache WHERE cached_at < ?",
+                (cutoff,),
+            )
         await self._db.commit()
         return cursor.rowcount
 

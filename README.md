@@ -6,7 +6,7 @@
   </p>
   <p align="center">
     <a href="https://github.com/AetherCore-Dev/ag402/actions/workflows/ci.yml"><img src="https://github.com/AetherCore-Dev/ag402/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-    <img src="https://img.shields.io/badge/tests-562%2B_passing-brightgreen" alt="Tests" />
+    <img src="https://img.shields.io/badge/tests-602%2B_passing-brightgreen" alt="Tests" />
     <img src="https://img.shields.io/badge/coverage-90%25-brightgreen" alt="Coverage" />
     <img src="https://img.shields.io/pypi/v/ag402-core" alt="PyPI" />
     <a href="https://colab.research.google.com/github/AetherCore-Dev/ag402/blob/main/examples/ag402_quickstart.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab" /></a>
@@ -243,6 +243,9 @@ Four composable layers — each can be used independently:
 │  ag402-client-mcp   MCP client adapter (buyer) │
 │  (adapters/client_mcp) Claude Code·Cursor·OpenClaw│
 ├───────────────────────────────────────────────────┤
+│  ag402-claude / ag402-openclaw  Native adapters │
+│  (adapters/claude_code, openclaw)  Hook / Bridge  │
+├───────────────────────────────────────────────────┤
 │  ag402-mcp        HTTP gateway adapter (seller)│
 │  (adapters/mcp)      Wraps any API → x402 paywall │
 ├───────────────────────────────────────────────────┤
@@ -262,6 +265,8 @@ Four composable layers — each can be used independently:
 | `ag402-core` | Payment engine: wallet (SQLite), budget guard, Solana adapter, middleware, CLI | `pip install ag402-core` |
 | `ag402-mcp` | HTTP gateway adapter: add an x402 paywall to any API (seller side) | `pip install ag402-mcp` |
 | `ag402-client-mcp` | MCP client adapter: x402 auto-payment for Claude Code, Cursor, OpenClaw (buyer side) | `pip install ag402-client-mcp` |
+| `ag402-claude` | Claude Code hook adapter: automatic x402 payment via Claude Code hooks | `pip install ag402-claude` |
+| `ag402-openclaw` | OpenClaw bridge adapter: x402 auto-payment via mcporter | `pip install ag402-openclaw` |
 
 ---
 
@@ -427,8 +432,9 @@ make coverage       # Coverage report
 | Security TDD P1 (clock rollback, replay, traversal, fuzzing, SSRF) | 56 | 95% |
 | Security TDD P2 (persistent replay, exhaustion, fault injection, gateway) | 23 | 92% |
 | Concurrent payment tests (wallet races, budget guard, replay dedup) | 9 | 95% |
+| Receipt-reuse fix (grace window, delivery worker, FAILED state) | 27 | 95% |
 | Mainnet smoke tests (self-transfer, priority fees, on-chain verify) | 5 | — |
-| **Subtotal** | **562+** | **90%+** |
+| **Subtotal** | **602+** | **90%+** |
 
 ### On-chain Integration Tests
 
@@ -438,7 +444,7 @@ make coverage       # Coverage report
 | Devnet (Solana public testnet) | 26 | devnet RPC | ✅ Nightly |
 | **Subtotal** | **49** | | |
 
-> **Total: 77 on-chain + 470+ unit + 109 security TDD = 562+ tests**
+> **Total: 77 on-chain + 470+ unit + 109 security TDD + 27 receipt-reuse = 602+ tests**
 
 ### Test Infrastructure
 

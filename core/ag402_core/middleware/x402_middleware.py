@@ -7,13 +7,15 @@ auto-pays via the configured payment provider, and retries with proof.
 State machine integration (P0-2):
 - Uses PaymentOrder + PaymentOrderStore to track payment lifecycle.
 - After chain broadcast succeeds, retry failures do NOT rollback local wallet.
-- Failed deliveries are left in DELIVERING state for async background retry.
+- Failed deliveries are retried by the DeliveryWorker background task.
+- After max retries, orders transition to FAILED for manual review.
 - Idempotency-Key header is injected into all retry requests.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import uuid
@@ -37,6 +39,9 @@ from ag402_core.wallet.agent_wallet import AgentWallet
 from ag402_core.wallet.payment_order import OrderState, PaymentOrder, PaymentOrderStore
 
 logger = logging.getLogger(__name__)
+
+# Default max delivery retries before marking order as FAILED
+DEFAULT_DELIVERY_MAX_RETRIES = 5
 
 
 @dataclass
@@ -70,6 +75,8 @@ class X402PaymentMiddleware:
         config: X402Config,
         http_client: httpx.AsyncClient | None = None,
         order_store: PaymentOrderStore | None = None,
+        delivery_max_retries: int = DEFAULT_DELIVERY_MAX_RETRIES,
+        enable_delivery_worker: bool = True,
     ):
         self.wallet = wallet
         self.provider = provider
@@ -77,10 +84,43 @@ class X402PaymentMiddleware:
         self.budget_guard = BudgetGuard(wallet, config)
         self._client = http_client or httpx.AsyncClient(timeout=30.0)
         self._order_store = order_store
+        self._delivery_max_retries = delivery_max_retries
+        self._enable_delivery_worker = enable_delivery_worker
+        self._delivery_worker_task: asyncio.Task | None = None
+        self._delivery_worker = None
         # P1-2.5: Serialize budget-check + deduct to prevent TOCTOU race
         self._payment_lock = asyncio.Lock()
 
+    async def start_delivery_worker(self) -> None:
+        """Start the background delivery retry worker (if order_store available)."""
+        if not self._order_store or not self._enable_delivery_worker:
+            return
+        if self._delivery_worker_task is not None:
+            return  # Already running
+
+        from ag402_core.delivery_worker import DeliveryWorker
+
+        self._delivery_worker = DeliveryWorker(
+            self._order_store,
+            max_retries=self._delivery_max_retries,
+            http_client=self._client,
+        )
+        self._delivery_worker_task = asyncio.create_task(self._delivery_worker.run())
+        logger.info("[MIDDLEWARE] Delivery retry worker started")
+
+    async def stop_delivery_worker(self) -> None:
+        """Stop the background delivery retry worker."""
+        if self._delivery_worker:
+            self._delivery_worker.stop()
+        if self._delivery_worker_task:
+            self._delivery_worker_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._delivery_worker_task
+            self._delivery_worker_task = None
+        self._delivery_worker = None
+
     async def close(self) -> None:
+        await self.stop_delivery_worker()
         await self._client.aclose()
 
     async def handle_request(
@@ -244,30 +284,10 @@ class X402PaymentMiddleware:
         retry_response = await self._send(method, url, retry_headers, body)
 
         if retry_response.status_code >= 400:
-            # Retry failed — DO NOT rollback (chain payment is real)
-            # Leave order in DELIVERING state for async background worker
-            #
-            # TODO(P1-RECEIPT-REUSE): Implement delivery retry worker
-            # ──────────────────────────────────────────────────────────
-            # Currently the order is left in DELIVERING state and never
-            # retried. The infrastructure exists (get_stale_deliveries()
-            # in payment_order.py, retry_count field) but no background
-            # worker actually processes them.
-            #
-            # NEEDS:
-            # 1. A background asyncio task (delivery_worker) that polls
-            #    get_stale_deliveries() every ~30s and retries with the
-            #    stored request + same tx_hash proof.
-            # 2. Exponential backoff (30s → 60s → 120s), max 5 retries.
-            # 3. After max retries, transition to a new FAILED terminal
-            #    state and surface via `ag402 status` for manual review.
-            # 4. The gateway must accept retry requests with a previously
-            #    consumed tx_hash within a grace window (see the companion
-            #    TODO in adapters/mcp/ag402_mcp/gateway.py).
-            #
-            # Prerequisite: the gateway-side response cache / grace window
-            # must land first, otherwise retries will be rejected.
-            # ──────────────────────────────────────────────────────────
+            # Retry failed — DO NOT rollback (chain payment is real).
+            # Leave order in DELIVERING state for the background DeliveryWorker
+            # to retry with exponential backoff. After max retries, the worker
+            # transitions the order to FAILED for manual review.
             logger.error(
                 "[RETRY] Failed with status %d -- order stays in DELIVERING for async retry",
                 retry_response.status_code,
