@@ -33,13 +33,27 @@ Four composable packages:
 
 ## Quick Start
 
+**If you are an AI agent**, use the non-interactive path:
+
 ```bash
 pip install ag402-core
-ag402 setup        # Interactive wizard, set a wallet password, get 100 USDC test funds
+ag402 init         # Non-interactive: creates test wallet, deposits $100 USDC, zero prompts
+ag402 demo         # Verify the full auto-pay flow works
+```
+
+**If you are helping a human user**, let them run the interactive wizard:
+
+```bash
+pip install ag402-core
+ag402 setup        # Interactive wizard — password, role, network choices
 ag402 demo         # Watch the full auto-pay flow in action
 ```
 
-Zero config needed — default mode is TEST with virtual funds.
+Both paths produce the same result: a test wallet with $100 USDC, ready to use.
+
+IMPORTANT: `ag402 setup` and `ag402 upgrade` use interactive prompts (`input()`, `getpass()`).
+They WILL BLOCK an AI agent. Never pipe input to them. Use `ag402 init` instead for
+autonomous operation, or let the human run them directly.
 
 ## Integration (Buyer Side)
 
@@ -120,8 +134,8 @@ Requests without valid payment proof → 402.  Requests with valid x402 proof �
 
 | Command | Description |
 |---------|-------------|
-| `ag402 setup` | Interactive setup wizard (recommended for first use) |
-| `ag402 init` | Initialize wallet + auto-deposit test funds |
+| `ag402 setup` | Interactive setup wizard (for humans — blocks on prompts) |
+| `ag402 init` | Non-interactive wallet init + test funds (**use this if you are an AI agent**) |
 | `ag402 run <target>` | Launch Agent with auto x402 payment injection |
 | `ag402 mcp` | Start MCP payment server for Claude Code / Cursor / OpenClaw |
 | `ag402 install <tool>` | One-command MCP setup (claude-code, cursor, openclaw) |
@@ -361,12 +375,23 @@ ag402 --version || pip install ag402-core
 
 For AI tool integration (MCP), also: `pip install ag402-client-mcp`
 
-### Step 2: Wallet Setup (give choices)
+### Step 2: Wallet Setup
 
-- A) Quick start — test mode (recommended) → run `ag402 setup` (interactive wizard, deposits $100 test USDC)
+**If you are an AI agent operating autonomously** (no human in the loop):
+
+```bash
+ag402 init                # Non-interactive, creates test wallet + $100 USDC
+ag402 balance             # Verify: should show $100.00
+```
+
+Do NOT run `ag402 setup` — it blocks on interactive prompts.
+
+**If you are helping a human user** (human present, can type):
+
+- A) Quick start — test mode (recommended) → let them run `ag402 setup` (interactive wizard, deposits $100 test USDC)
 - B) Production mode → do A first, then `ag402 upgrade` (also interactive — private key + password)
 
-Both `ag402 setup` and `ag402 upgrade` are interactive. Let the user run them directly.
+Both `ag402 setup` and `ag402 upgrade` use interactive prompts. Let the user run them directly.
 
 Verify: `ag402 balance` → should show $100.00 test balance.
 

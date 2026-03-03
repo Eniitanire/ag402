@@ -40,7 +40,7 @@ pip install ag402-client-mcp
 
 ## Step 2: Wallet Setup
 
-**Ask the user:**
+**If the user is present and can interact with the terminal**, ask them to choose:
 
 - **A) Quick start — test mode (recommended)** → no wallet needed, 100 USDC test funds deposited automatically
 - **B) I have a Solana wallet and want production mode** → will need private key + `ag402 upgrade`
@@ -53,7 +53,15 @@ ag402 setup
 
 `ag402 setup` is an **interactive wizard** with prompts (password input, confirmations). Let the user run it directly — do not try to automate or pipe input to it.
 
-After setup completes, verify:
+**If you are operating autonomously** (no human in the loop), use `ag402 init` instead:
+
+```bash
+ag402 init
+```
+
+`ag402 init` is **non-interactive** — it creates a test wallet and deposits $100 USDC with zero prompts. This is the correct command for AI agents acting autonomously.
+
+After either command, verify:
 
 ```bash
 ag402 balance
@@ -227,21 +235,22 @@ Ask the user:
 
 ## Quick Reference
 
-Fastest path — test mode, one-off call:
+Fastest path — AI agent autonomous (no human needed):
 
 ```bash
-# Install
 pip install ag402-core
+ag402 init                                    # Non-interactive wallet + $100 test funds
+ag402 pay http://127.0.0.1:4020/              # Pay for an API call
+ag402 balance                                 # Check balance
+```
 
-# Setup wallet (interactive — creates wallet, deposits $100 test funds)
-ag402 setup
+Fastest path — human-guided test mode:
 
-# Pay for an API call
-ag402 pay http://127.0.0.1:4020/
-
-# Check balance + history
-ag402 balance
-ag402 history
+```bash
+pip install ag402-core
+ag402 setup                                   # Interactive wizard
+ag402 pay http://127.0.0.1:4020/              # Pay for an API call
+ag402 balance && ag402 history                 # Check balance + history
 ```
 
 Fastest path — Claude Code MCP integration:

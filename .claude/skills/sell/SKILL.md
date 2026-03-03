@@ -305,7 +305,7 @@ After verification passes, present the user's gateway info and ask what they wan
 **Ask the user:**
 
 - **A) I'm done for now** → show them the buyer command: `ag402 pay http://<host>:4020/endpoint`, remind them `127.0.0.1` is local-only and explain how to share externally
-- **B) Switch to production (real payments)** → run `ag402 upgrade` (this is an interactive command that handles private key encryption, RPC URL, and daily limits). Note: `ag402 upgrade` uses interactive prompts (password input, confirmations) — let the user run it directly, do not try to automate the interactive prompts.
+- **B) Switch to production (real payments)** → run `ag402 upgrade` (this is an interactive command that handles private key encryption, RPC URL, and daily limits). Note: `ag402 upgrade` uses interactive prompts (password input, confirmations) — let the user run it directly, do not try to automate the interactive prompts. **AI agents cannot run this autonomously — it requires human input for private key and password.**
 - **C) Run the health check suite** → run `ag402 doctor` to check the full environment
 
 For AI agent buyers, mention they can connect via `ag402 mcp` or the Python SDK.
