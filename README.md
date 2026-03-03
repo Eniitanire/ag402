@@ -11,6 +11,7 @@
     <a href="https://colab.research.google.com/github/AetherCore-Dev/ag402/blob/main/examples/ag402_quickstart.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab" /></a>
     <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python" />
     <a href="https://github.com/AetherCore-Dev/ag402/blob/main/LICENSE"><img src="https://img.shields.io/github/license/AetherCore-Dev/ag402" alt="License" /></a>
+    <a href="https://aethercore-dev.github.io/ag402/"><img src="https://img.shields.io/badge/homepage-ag402-06b6d4" alt="Homepage" /></a>
   </p>
 </p>
 
@@ -97,6 +98,7 @@ Or try it in your browser with zero install:
 
 ## Links
 
+- [Homepage](https://aethercore-dev.github.io/ag402/) — visual overview and getting started
 - [Interactive Colab Notebook](https://colab.research.google.com/github/AetherCore-Dev/ag402/blob/main/examples/ag402_quickstart.ipynb) — see it work in your browser
 - [Claude Code Guide](docs/guide-claude-code.md) · [Cursor Guide](docs/guide-cursor.md) · [OpenClaw Guide](docs/guide-openclaw.md)
 - [Local Validator Guide](docs/guide-localnet.md) — run real on-chain transactions locally
