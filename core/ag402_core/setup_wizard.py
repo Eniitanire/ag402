@@ -307,6 +307,9 @@ def _save_configuration(result: SetupResult) -> None:
             "X402_PER_MINUTE_COUNT": str(result.per_minute_count),
         })
 
+    # Private key is stored ONLY in encrypted wallet.key (created in _setup_wallet).
+    # It is NOT written to .env to avoid plaintext key exposure on disk.
+
     # Provider/both settings
     if result.role in ("provider", "both"):
         env_entries.update({
@@ -338,7 +341,11 @@ def _save_configuration(result: SetupResult) -> None:
     # Show summary of key env vars written
     print(f"  {bold('Saved configuration:')}")
     for key, val in env_entries.items():
-        print(f"    {dim(key)}={val}")
+        if any(s in key.lower() for s in ("key", "password", "secret")):
+            display = "********" if val else "(empty)"
+        else:
+            display = val
+        print(f"    {dim(key)}={display}")
 
 
 def _print_setup_banner() -> None:
@@ -498,18 +505,17 @@ def print_env_examples() -> None:
     print("  AG402_ROLE=consumer")
     print("  SOLANA_RPC_URL=https://api.devnet.solana.com")
     print("  USDC_MINT_ADDRESS=4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU")
-    print("  SOLANA_PRIVATE_KEY=<your-base58-private-key>")
     print("  X402_DAILY_LIMIT=10.0")
     print("  X402_SINGLE_TX_LIMIT=5.0")
     print("  X402_PER_MINUTE_LIMIT=2.0")
     print("  X402_PER_MINUTE_COUNT=5")
     print()
-    print(dim("  # For running devnet tests:"))
-    print("  DEVNET_BUYER_PRIVATE_KEY=<same-as-SOLANA_PRIVATE_KEY>")
+    print(dim("  # Private key is stored in encrypted ~/.ag402/wallet.key"))
+    print(dim("  # Run 'ag402 setup' to configure (never put keys in .env)"))
     print()
     print(f"  {bold('Prerequisites:')}")
-    print(f"    $ {cyan('solana-keygen new -o ~/.ag402/devnet-buyer.json')}")
-    print(f"    $ {cyan('solana airdrop 2 $(solana-keygen pubkey ~/.ag402/devnet-buyer.json) --url devnet')}")
+    print(f"    $ {cyan('ag402 setup')}  {dim('(select Devnet, enter private key)')}")
+    print(f"    $ {cyan('solana airdrop 2 <PUBKEY> --url devnet')}")
     print(f"    $ {cyan('ag402 demo --devnet')}")
     print()
 
@@ -523,9 +529,11 @@ def print_env_examples() -> None:
     print("  AG402_ROLE=consumer")
     print("  SOLANA_RPC_URL=https://api.mainnet-beta.solana.com")
     print("  USDC_MINT_ADDRESS=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
-    print("  SOLANA_PRIVATE_KEY=<your-base58-private-key>")
     print("  X402_DAILY_LIMIT=10.0")
     print("  X402_SINGLE_TX_LIMIT=5.0")
+    print()
+    print(dim("  # Private key is stored in encrypted ~/.ag402/wallet.key"))
+    print(dim("  # Run 'ag402 setup' to configure (never put keys in .env)"))
     print()
     print(f"  {yellow('⚠')} Uses real funds. Double-check your wallet balance before use.")
     print()

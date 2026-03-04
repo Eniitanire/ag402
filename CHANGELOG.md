@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2026-03-04
+
+### Fixed
+
+- **Production mode broken — `effective_rpc_url` never used**: `PaymentProviderRegistry._build_solana()` and all CLI commands used `config.solana_rpc_url` (raw env var) instead of `config.effective_rpc_url` (network-aware resolver). Localnet/mainnet routing was silently ignored
+- **`ag402 balance` / `ag402 status` only showed local SQLite ledger**: Now queries on-chain USDC balance via `SolanaAdapter.check_balance()` in production mode, showing both on-chain and local ledger amounts
+- **`ag402 pay` blocked by empty local ledger in production**: Pre-check now uses on-chain balance in production mode. Payment flow changed to pay-on-chain-first-then-record-locally for correct ordering
+- **`ag402 setup` / `ag402 upgrade` did not persist `X402_NETWORK` or `USDC_MINT_ADDRESS`**: Mainnet configuration was incomplete, causing silent fallback to devnet defaults
+- **Settlement summary mixed on-chain and ledger balances**: Production mode now re-queries on-chain balance for accurate before/after display
+
+### Security
+
+- **Private key no longer stored in plaintext `.env`**: Keys are now stored exclusively in encrypted `~/.ag402/wallet.key` (PBKDF2-480K + AES). `load_config()` auto-decrypts at startup using `AG402_UNLOCK_PASSWORD` env var or interactive prompt
+- **Private key display masked everywhere**: `ag402 setup` summary, `ag402 env set`, and `ag402 env show` all mask values containing "key", "password", or "secret"
+- **`install_key_guard()` activated in CLI**: Root logger filter now installed at `main()` entry point, redacting private keys from any log output
+- **`~/.ag402/.gitignore` auto-created**: Contains `*` to prevent accidental git commit of key files
+- **RPC error messages truncated**: Exception strings capped at 120 chars to prevent leaking RPC API keys
+- **`ag402 upgrade` requires encryption**: Production mode upgrade now fails if `cryptography` package is not installed, preventing key-less production state
+- **Example docs updated**: `ag402 setup --show-examples` no longer shows plaintext `SOLANA_PRIVATE_KEY=` in `.env` examples
+
 ## [0.1.9] - 2026-02-27
 
 ### Fixed

@@ -220,6 +220,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     from ag402_core.friendly_errors import friendly_cli_wrapper
+    from ag402_core.security.key_guard import install_key_guard
+
+    install_key_guard()
 
     @friendly_cli_wrapper
     def _main_inner():
@@ -564,7 +567,11 @@ def _cmd_env(args) -> None:
         key = args.key
         value = args.value
         set_env_value(key, value)
-        print(f"\n  {_green('✓')} {key} = {value}\n")
+        if any(s in key.lower() for s in ("key", "password", "secret")):
+            display = "********"
+        else:
+            display = value
+        print(f"\n  {_green('✓')} {key} = {display}\n")
         print(f"  {_dim('Saved to ~/.ag402/.env')}\n")
 
 
@@ -792,14 +799,18 @@ def _cmd_upgrade() -> None:
         print(f"\n  {_red('✗')} No private key provided\n")
         return
 
-    # Encrypt the key
+    # Encrypt the key — REQUIRED for production mode
+    key_saved = False
     try:
         from ag402_core.security.wallet_encryption import (
             encrypt_private_key,
             save_encrypted_wallet,
         )
 
-        password = getpass.getpass("  Set wallet password: ")
+        password = getpass.getpass("  Set wallet password (min 8 chars): ")
+        if len(password) < 8:
+            print(f"\n  {_red('✗')} Password must be at least 8 characters\n")
+            return
         password2 = getpass.getpass("  Confirm password: ")
         if password != password2:
             print(f"\n  {_red('✗')} Passwords do not match\n")
@@ -809,8 +820,16 @@ def _cmd_upgrade() -> None:
         wallet_path = os.path.expanduser("~/.ag402/wallet.key")
         save_encrypted_wallet(wallet_path, encrypted)
         print(f"  {_green('✓')} Private key encrypted and saved: {wallet_path}")
+        key_saved = True
     except ImportError:
-        print(f"  {_yellow('⚠')} cryptography not installed, skipping encryption")
+        print(f"\n  {_red('✗')} cryptography package is required for production mode")
+        print("  → Run: pip install cryptography")
+        print()
+        return
+
+    if not key_saved:
+        print(f"\n  {_red('✗')} Private key was not saved. Aborting upgrade.\n")
+        return
 
     # Set daily limit
     raw_limit = input("\n  Set daily spending limit: [$10] ").strip()
@@ -822,12 +841,15 @@ def _cmd_upgrade() -> None:
     daily_limit = min(daily_limit, 1000.0)
     print(f"  {_green('✓')} Daily limit: ${daily_limit:.2f}")
 
-    # Save to .env
-    save_env_file({
+    # Save to .env (private key is in encrypted wallet.key, NOT in .env)
+    env_entries = {
         "X402_MODE": "production",
+        "X402_NETWORK": "mainnet",
         "SOLANA_RPC_URL": "https://api.mainnet-beta.solana.com",
+        "USDC_MINT_ADDRESS": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
         "X402_DAILY_LIMIT": str(daily_limit),
-    }, merge=True)
+    }
+    save_env_file(env_entries, merge=True)
 
     print()
     print(f"  {_green('✓')} Production mode enabled!")
@@ -871,7 +893,7 @@ async def _cmd_init(db_path: str) -> None:
     print(f"  │  Balance:       {_green(f'${balance:.4f}'):>37s}│")
     print(f"  │  Daily Limit:   ${config.daily_spend_limit:.2f} (used: ${daily:.2f})      │")
     print(f"  │  Per-Minute:    ${config.per_minute_limit:.2f} / {config.per_minute_count} txns             │")
-    print(f"  │  Network:       {'solana-devnet (mock)' if is_test else config.solana_rpc_url[:25]:25s}│")
+    print(f"  │  Network:       {'solana-devnet (mock)' if is_test else config.effective_rpc_url[:25]:25s}│")
     print(f"  │  Security:      {_green('6 layers active ✓'):>37s}│")
     print("  └─────────────────────────────────────────────┘")
     print()
@@ -899,6 +921,7 @@ async def _cmd_status() -> None:
 
     mode_str = _yellow("TEST 🧪") + " (safe, no real funds)" if is_test else _red("PRODUCTION")
     print(f"  Mode:        {mode_str}")
+    print(f"  Network:     {_dim(str(config.network.value))}")
     print(f"  Wallet:      {_dim(db_path)}")
 
     if not os.path.exists(db_path):
@@ -915,7 +938,21 @@ async def _cmd_status() -> None:
     minute = float(await wallet.get_minute_spend())
     minute_count = await wallet.get_minute_count()
 
-    print(f"  Balance:     {_green(f'${balance:.4f}')}")
+    # On-chain balance (production mode with private key)
+    if not is_test and config.solana_private_key:
+        try:
+            from ag402_core.payment.registry import PaymentProviderRegistry
+            provider = PaymentProviderRegistry.get_provider(config=config)
+            on_chain = await provider.check_balance()
+            print(f"  On-chain:    {_green(f'${on_chain:.4f} USDC')}  {_dim(f'({config.effective_rpc_url})')}")
+        except Exception as exc:
+            print(f"  On-chain:    {_red('unavailable')}  {_dim(str(exc)[:60])}")
+    elif not is_test:
+        print(f"  On-chain:    {_yellow('no private key')}  {_dim('set SOLANA_PRIVATE_KEY to query')}")
+
+    bal_label = "Ledger" if not is_test else "Balance"
+    bal_suffix = _dim("  (local bookkeeping)") if not is_test else ""
+    print(f"  {bal_label}:      {_green(f'${balance:.4f}')}{bal_suffix}")
     print()
 
     # Budget bars
@@ -965,6 +1002,7 @@ async def _cmd_balance(db_path: str) -> None:
 
     config = load_config()
     daily_limit = config.daily_spend_limit
+    is_production = not config.is_test_mode
 
     wallet = AgentWallet(db_path=db_path)
     await wallet.init_db()
@@ -973,7 +1011,22 @@ async def _cmd_balance(db_path: str) -> None:
     minute = float(await wallet.get_minute_spend())
 
     print()
-    print(f"  Balance:      {_green(f'${balance:.4f}')}")
+
+    # On-chain balance (production mode with private key)
+    if is_production and config.solana_private_key:
+        try:
+            from ag402_core.payment.registry import PaymentProviderRegistry
+            provider = PaymentProviderRegistry.get_provider(config=config)
+            on_chain = await provider.check_balance()
+            print(f"  On-chain:     {_green(f'${on_chain:.4f} USDC')}  {_dim(f'({config.effective_rpc_url})')}")
+        except Exception as exc:
+            print(f"  On-chain:     {_red('unavailable')}  {_dim(str(exc)[:60])}")
+    elif is_production:
+        print(f"  On-chain:     {_yellow('no private key')}  {_dim('set SOLANA_PRIVATE_KEY to query')}")
+
+    bal_label = "Ledger" if is_production else "Balance"
+    bal_suffix = _dim("  (local bookkeeping)") if is_production else ""
+    print(f"  {bal_label}:      {_green(f'${balance:.4f}')}{bal_suffix}")
     print(f"  Daily spend:  {_bar(daily, daily_limit)}  ${daily:.4f} / ${daily_limit:.2f}")
     print(f"  Minute spend: {_bar(minute, config.per_minute_limit)}  ${minute:.4f} / ${config.per_minute_limit:.2f}")
     print()
@@ -1111,7 +1164,7 @@ def _cmd_config() -> None:
     print()
     print("  ─── Paths & Network ───")
     print(f"  wallet_db_path:            {config.wallet_db_path}")
-    print(f"  solana_rpc_url:            {config.solana_rpc_url}")
+    print(f"  solana_rpc_url:            {config.effective_rpc_url}")
     if config.solana_rpc_backup_url:
         print(f"  solana_rpc_backup_url:     {config.solana_rpc_backup_url}")
     print()
@@ -1376,18 +1429,36 @@ async def _cmd_pay(url: str, method: str, db_path: str) -> None:
     wallet = AgentWallet(db_path=db_path)
     await wallet.init_db()
 
-    balance_before = float(await wallet.get_balance())
+    provider = PaymentProviderRegistry.get_provider(config=config)
+
+    # Balance pre-check: use on-chain balance in production, local ledger in test
+    is_production = not config.is_test_mode
+    if is_production and config.solana_private_key:
+        try:
+            balance_before = await provider.check_balance()
+        except Exception as rpc_err:
+            print(f"     {_red('✗')} Cannot query on-chain balance: {_dim(str(rpc_err)[:80])}")
+            print(f"     → Check your RPC URL: {_cyan('ag402 config')}")
+            print()
+            await wallet.close()
+            return
+    else:
+        balance_before = float(await wallet.get_balance())
+
     if balance_before < 0.01:
-        print(f"     {_red('✗')} Insufficient balance: ${balance_before:.4f}")
-        print(f"     → Run {_cyan('ag402 setup')} to add test funds")
+        source = "on-chain" if is_production else "ledger"
+        print(f"     {_red('✗')} Insufficient {source} balance: ${balance_before:.4f}")
+        if is_production:
+            print(f"     → Fund your wallet with USDC on {config.network.value}")
+        else:
+            print(f"     → Run {_cyan('ag402 setup')} to add test funds")
         print()
         await wallet.close()
         return
 
-    print(f"     Balance: {_green(f'${balance_before:.4f}')}")
+    label = "On-chain" if is_production else "Balance"
+    print(f"     {label}: {_green(f'${balance_before:.4f}')}")
     print()
-
-    provider = PaymentProviderRegistry.get_provider(config=config)
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
@@ -1440,26 +1511,58 @@ async def _cmd_pay(url: str, method: str, db_path: str) -> None:
             # ── Step 4: Pay ──
             print(f"  {_bold('④ Auto-Pay')}  {_dim('← Wallet deduction + on-chain transfer')}")
 
-            # Deduct from wallet
-            deduction_tx = await wallet.deduct(
-                amount=amount,
-                to_address=challenge.address,
-            )
+            deduction_tx = None
 
-            # Pay on-chain
-            pay_result = await provider.pay(
-                to_address=challenge.address,
-                amount=amount,
-                token=challenge.token,
-            )
+            if is_production:
+                # Production: pay on-chain first, then record in local ledger
+                pay_result = await provider.pay(
+                    to_address=challenge.address,
+                    amount=amount,
+                    token=challenge.token,
+                )
 
-            if not pay_result.success:
-                print(f"     {_red('✗')} On-chain payment failed: {pay_result.error}")
-                await wallet.rollback(deduction_tx.id)
-                print(f"     {_yellow('↩')} Wallet deduction rolled back")
-                await wallet.close()
-                print()
-                return
+                if not pay_result.success:
+                    print(f"     {_red('✗')} On-chain payment failed: {pay_result.error}")
+                    await wallet.close()
+                    print()
+                    return
+
+                # Record in local ledger for audit trail (best-effort)
+                try:
+                    # Ensure ledger has enough balance to record the deduction
+                    ledger_bal = float(await wallet.get_balance())
+                    if ledger_bal < amount:
+                        await wallet.deposit(
+                            amount - ledger_bal + 0.01,
+                            note=f"Auto-sync from on-chain (tx {pay_result.tx_hash[:16]})",
+                        )
+                    deduction_tx = await wallet.deduct(
+                        amount=amount,
+                        to_address=challenge.address,
+                        tx_hash=pay_result.tx_hash,
+                    )
+                except Exception as ledger_err:
+                    print(f"     {_yellow('⚠')} Ledger recording skipped: {_dim(str(ledger_err)[:60])}")
+            else:
+                # Test mode: deduct from local ledger first, then mock-pay
+                deduction_tx = await wallet.deduct(
+                    amount=amount,
+                    to_address=challenge.address,
+                )
+
+                pay_result = await provider.pay(
+                    to_address=challenge.address,
+                    amount=amount,
+                    token=challenge.token,
+                )
+
+                if not pay_result.success:
+                    print(f"     {_red('✗')} On-chain payment failed: {pay_result.error}")
+                    await wallet.rollback(deduction_tx.id)
+                    print(f"     {_yellow('↩')} Wallet deduction rolled back")
+                    await wallet.close()
+                    print()
+                    return
 
             print(f"     TX Hash:  {_cyan(pay_result.tx_hash[:44])}")
             print(f"     Amount:   {_green(f'${amount:.4f} {challenge.token}')}")
@@ -1494,9 +1597,12 @@ async def _cmd_pay(url: str, method: str, db_path: str) -> None:
             print(f"     Response: {status_display} ({t3 - t2:.2f}s)")
 
             if retry_response.status_code >= 400:
-                # Retry failed — rollback
-                await wallet.rollback(deduction_tx.id)
-                print(f"     {_yellow('↩')} Server returned error, auto-refunded")
+                # Retry failed — rollback local ledger if applicable
+                if not is_production and deduction_tx:
+                    await wallet.rollback(deduction_tx.id)
+                    print(f"     {_yellow('↩')} Server returned error, auto-refunded")
+                elif is_production:
+                    print(f"     {_yellow('⚠')} Server returned error (on-chain payment already sent)")
             else:
                 # Update deduction with tx_hash
                 pass
@@ -1505,7 +1611,13 @@ async def _cmd_pay(url: str, method: str, db_path: str) -> None:
             _print_response_body(retry_response.content, retry_response.status_code)
 
             # ── Step 6: Balance summary ──
-            final = float(await wallet.get_balance())
+            if is_production and config.solana_private_key:
+                try:
+                    final = await provider.check_balance()
+                except Exception:
+                    final = balance_before - amount  # best estimate
+            else:
+                final = float(await wallet.get_balance())
             spent = balance_before - final
             elapsed = t3 - t0
 
@@ -1530,18 +1642,20 @@ async def _cmd_pay(url: str, method: str, db_path: str) -> None:
             print(f"     {_dim('If using devnet, try localnet:')} {_cyan('ag402 demo --localnet')}")
         except Exception as exc:
             exc_str = str(exc).lower()
+            # Truncate error messages to avoid leaking RPC API keys or sensitive data
+            safe_err = str(exc)[:120]
             if "rpc" in exc_str or "solana" in exc_str:
-                print(f"\n  {_red('✗')} Solana RPC error: {exc}")
+                print(f"\n  {_red('✗')} Solana RPC error: {safe_err}")
                 print(f"  {_yellow('⚠')} Suggestions:")
                 print("     1. Check your network connection")
                 print(f"     2. Use localnet: {_cyan('ag402 demo --localnet')}")
                 print(f"     3. Check RPC URL: {_cyan('ag402 config')}")
             elif "timeout" in exc_str or "timed out" in exc_str:
-                print(f"\n  {_red('✗')} Operation timed out: {exc}")
+                print(f"\n  {_red('✗')} Operation timed out: {safe_err}")
                 print(f"  {_yellow('⚠')} The transaction may still succeed on-chain")
                 print(f"     Check with: {_cyan('ag402 history')}")
             else:
-                print(f"\n  {_red('✗')} Request failed: {exc}")
+                print(f"\n  {_red('✗')} Request failed: {safe_err}")
         finally:
             await wallet.close()
 
@@ -1801,7 +1915,7 @@ async def _cmd_demo(mode: str = "mock") -> None:
                 from ag402_core.payment.solana_adapter import SolanaAdapter
                 provider = SolanaAdapter(
                     private_key=config.solana_private_key,
-                    rpc_url=config.solana_rpc_url,
+                    rpc_url=config.effective_rpc_url,
                     usdc_mint=config.usdc_mint_address,
                 )
                 recipient_addr = "DemoRecipientWa11et11111111111111111111"

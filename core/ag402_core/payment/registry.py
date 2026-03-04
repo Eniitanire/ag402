@@ -90,7 +90,7 @@ class PaymentProviderRegistry:
 
         return SolanaAdapter(
             private_key=config.solana_private_key,
-            rpc_url=config.solana_rpc_url,
+            rpc_url=config.effective_rpc_url,
             usdc_mint=config.usdc_mint_address,
             rpc_backup_url=config.solana_rpc_backup_url,
         )

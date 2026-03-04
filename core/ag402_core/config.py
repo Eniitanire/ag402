@@ -217,8 +217,66 @@ def load_config() -> X402Config:
 
     Automatically reads ~/.ag402/.env if present (does not override
     existing env vars).
+
+    If SOLANA_PRIVATE_KEY is not set but an encrypted wallet.key exists,
+    attempts to decrypt it using AG402_UNLOCK_PASSWORD (env or interactive).
     """
     from ag402_core.env_manager import load_dotenv
 
     load_dotenv()  # ~/.ag402/.env → os.environ (no override)
+
+    # Auto-decrypt wallet.key if plaintext key is not available
+    if not os.getenv("SOLANA_PRIVATE_KEY"):
+        _try_decrypt_wallet_key()
+
     return X402Config()
+
+
+def _try_decrypt_wallet_key() -> None:
+    """Attempt to decrypt ~/.ag402/wallet.key and inject into environment.
+
+    Silent no-op if:
+    - wallet.key does not exist
+    - cryptography package is not installed
+    - AG402_UNLOCK_PASSWORD is not set and stdin is not a tty
+    """
+    import logging as _log
+
+    wallet_path = os.getenv(
+        "AG402_WALLET_KEY_PATH",
+        os.path.expanduser("~/.ag402/wallet.key"),
+    )
+    if not os.path.exists(wallet_path):
+        return
+
+    try:
+        from ag402_core.security.wallet_encryption import (
+            decrypt_private_key,
+            get_unlock_password,
+            load_encrypted_wallet,
+        )
+
+        encrypted_data = load_encrypted_wallet(wallet_path)
+        if encrypted_data is None:
+            return
+
+        password = get_unlock_password()
+        private_key = decrypt_private_key(password, encrypted_data)
+        os.environ["SOLANA_PRIVATE_KEY"] = private_key
+        _log.getLogger(__name__).info(
+            "Private key loaded from encrypted wallet: %s", wallet_path
+        )
+    except ImportError:
+        _log.getLogger(__name__).debug(
+            "cryptography not installed — cannot decrypt wallet.key"
+        )
+    except SystemExit:
+        # get_unlock_password raises SystemExit in non-interactive mode
+        # without AG402_UNLOCK_PASSWORD — this is expected, not an error
+        _log.getLogger(__name__).debug(
+            "No unlock password available — skipping wallet.key decryption"
+        )
+    except Exception as exc:
+        _log.getLogger(__name__).warning(
+            "Failed to decrypt wallet.key: %s", exc
+        )

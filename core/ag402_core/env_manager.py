@@ -11,6 +11,7 @@ Reads/writes ~/.ag402/.env with robust parsing that handles:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import re
@@ -127,6 +128,12 @@ def save_env_file(
     # Ensure directory exists
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Ensure .gitignore exists in data directory to prevent accidental key commits
+    gitignore_path = path.parent / ".gitignore"
+    if not gitignore_path.exists():
+        with contextlib.suppress(OSError):
+            gitignore_path.write_text("# Protect private keys and wallet data\n*\n")
+
     existing: dict[str, str] = {}
     if merge:
         existing = parse_env_file(path)
@@ -151,7 +158,6 @@ def save_env_file(
         f.write("\n".join(lines) + "\n")
 
     # Restrictive permissions (owner-only)
-    import contextlib
     with contextlib.suppress(OSError):
         os.chmod(path, 0o600)
 
