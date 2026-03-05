@@ -24,7 +24,8 @@ Please include:
 
 ## Security Design
 
-- **Non-custodial**: Private keys never leave your machine.
+- **Seller-No-Key Architecture**: Sellers (API providers) **never need a private key**. They only configure a public receiving address (`AG402_RECEIVE_ADDRESS`). Ag402 verifies incoming payments on-chain using the buyer's signature — no seller signing required. This eliminates an entire class of key-management risks for providers.
+- **Non-custodial**: Private keys never leave your machine. Only **buyers** (agents that pay for API calls) hold a private key, and it is used solely for signing payment transactions.
 - **PBE Encryption**: PBKDF2-HMAC-SHA256 (480K iterations) + Fernet/AES for key-at-rest protection. Atomic file writes (tempfile + os.replace) prevent crash-induced corruption. Minimum 8-character password enforced.
 - **6-Layer Budget Guard**: Single-TX cap, per-minute cap, daily cap, circuit breaker, auto-rollback, key filter. Budget check + deduction are serialized under asyncio.Lock to prevent TOCTOU race conditions.
 - **Zero Telemetry**: No usage tracking, no IP logging, no analytics.

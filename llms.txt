@@ -274,8 +274,14 @@ ag402 --version || pip install ag402-core ag402-mcp
 - A) No wallet / just testing → use DemoRecipientWa11et11111111111111111111 + test mode
 - B) I have a Solana address → paste it (32-44 char base58)
 
+⚠️ CRITICAL — SELLERS NEVER NEED A PRIVATE KEY:
+  Ag402 gateway only uses the seller's PUBLIC address to verify incoming payments.
+  No signing or private key access is ever required for the seller/provider role.
+  If a user provides anything longer than 44 characters, STOP immediately.
+
 SAFETY: If user pastes a private key (much longer than 44 chars), STOP.
-Say: "That's a private key — never share it. I need your public address."
+Say: "That's a private key — never share it. I need your public address.
+Sellers in Ag402 NEVER need a private key. Only your public receiving address is required."
 
 **Q4 — Deploy:**
 - A) Local (recommended for first-time)
@@ -357,7 +363,8 @@ curl -s http://127.0.0.1:4020/health                             # expect: {"sta
 
 ### Red Flags — STOP
 
-- User pastes a private key → explain public vs private
+- User pastes a private key → explain public vs private. Sellers NEVER need a private key
+- User tries to configure a private key in .env for the seller role → STOP, explain: only AG402_RECEIVE_ADDRESS is needed
 - localhost as target inside Docker → explain Docker networking
 - Production mode with DemoRecipientWa11et... → need real wallet, run ag402 upgrade
 - Price is 0 → confirm intentional

@@ -30,6 +30,8 @@ Agent sends request ──▶ API returns 402 ──▶ Ag402 auto-pays ──�
 
 You set a price. AI agents pay per call. USDC arrives directly in your wallet. That's the whole model.
 
+> **🔒 Security**: Sellers only need a **public receiving address** — never a private key. Ag402 gateway verifies payments using your public address; no signing is required.
+
 **Tell your AI assistant:**
 
 > *"I want to sell access to my API at $0.05 per call using ag402."*
