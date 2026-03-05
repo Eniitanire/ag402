@@ -631,8 +631,8 @@ def _cmd_serve(args) -> None:
     print("  " + "═" * 55)
     print()
     print(f"  {_yellow('⚠')} {_bold('Security Note')}: Sellers only need a PUBLIC receiving address.")
-    print(f"     Ag402 gateway does NOT require any private key to operate.")
-    print(f"     Never configure a private key for the seller/provider role.")
+    print("     Ag402 gateway does NOT require any private key to operate.")
+    print("     Never configure a private key for the seller/provider role.")
     print()
 
     try:

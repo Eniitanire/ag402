@@ -238,12 +238,12 @@ def _setup_provider(result: SetupResult) -> None:
     """Configure provider-specific settings."""
     # ── Security reminder: sellers never need a private key ──
     print(f"  {yellow('⚠')} {bold('Wallet Safety Reminder')}")
-    print(f"  ┌────────────────────────────────────────────────────────┐")
-    print(f"  │  Sellers only need a PUBLIC receiving address.         │")
-    print(f"  │  Do NOT paste your private key here!                   │")
-    print(f"  │  Ag402 verifies payments using your public address —   │")
-    print(f"  │  no signing or private key access is ever required.    │")
-    print(f"  └────────────────────────────────────────────────────────┘")
+    print("  ┌────────────────────────────────────────────────────────┐")
+    print("  │  Sellers only need a PUBLIC receiving address.         │")
+    print("  │  Do NOT paste your private key here!                   │")
+    print("  │  Ag402 verifies payments using your public address —   │")
+    print("  │  no signing or private key access is ever required.    │")
+    print("  └────────────────────────────────────────────────────────┘")
     print()
 
     result.receive_address = _prompt_input(
