@@ -1,0 +1,27 @@
+name: OpenSSF Scorecard
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 0 1 * *'  # 每月运行
+
+jobs:
+  scorecard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run OpenSSF Scorecard
+        uses: ossf/scorecard-action@v2
+        with:
+          results_file: results.sarif.json
+          results_format: sarif
+          publish_results: true
+      
+      - name: Upload to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif.json
