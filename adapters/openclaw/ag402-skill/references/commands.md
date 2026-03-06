@@ -291,3 +291,33 @@ pay https://api.example.com/premium --amount 2.00
 - `ag402 setup` - 初始化 ag402
 - `ag402 status` - 查看整体状态
 - `ag402 config` - 查看/修改配置
+
+## Prepaid Commands
+
+### prepaid status
+Check prepaid balance and credentials.
+
+```bash
+ag402 prepaid status
+```
+
+Returns:
+- Total credentials
+- Valid credentials count
+- Remaining calls per seller
+
+### prepaid list
+List available prepaid packages.
+
+```bash
+ag402 prepaid list
+```
+
+### prepaid buy <package_id>
+Purchase a prepaid package (for testing).
+
+```bash
+ag402 prepaid buy p30d_1000
+```
+
+**Note**: In production, this would involve on-chain payment.

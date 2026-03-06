@@ -78,3 +78,49 @@ doctor
 ## Version
 
 v0.1.12 - 2026-03-06
+
+---
+
+## Prepaid System (v0.1.12+)
+
+### Overview
+
+The prepaid system allows AI agents to purchase bundled API calls at discounted rates, reducing gas costs by 99.9%.
+
+### Package Tiers
+
+| Package | Days | Calls | Price (USDC) |
+|---------|------|-------|--------------|
+| p3d_100 | 3 | 100 | 1.5 |
+| p7d_500 | 7 | 500 | 5.0 |
+| p30d_1000 | 30 | 1000 | 8.0 |
+| p365d_5000 | 365 | 5000 | 35.0 |
+| p730d_10000 | 730 | 10000 | 60.0 |
+
+### How It Works
+
+1. **Purchase**: Buyer purchases a prepaid package via `ag402 prepaid buy <package_id>`
+2. **Storage**: Credential is stored locally in `~/.ag402/prepaid_credentials.json`
+3. **API Call**: When making API calls, prepaid credentials are checked first
+4. **Verification**: Seller verifies the HMAC-signed credential
+5. **Fallback**: If no prepaid available, falls back to standard 402 payment
+
+### Commands
+
+```bash
+# Check prepaid balance
+ag402 prepaid status
+
+# List available packages  
+ag402 prepaid list
+
+# Purchase a package (for testing)
+ag402 prepaid buy p30d_1000
+```
+
+### Security
+
+- HMAC-SHA256 signature verification
+- Constant-time comparison prevents timing attacks
+- Credential expiry validation
+- Seller address verification
