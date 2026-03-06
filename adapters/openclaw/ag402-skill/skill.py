@@ -33,6 +33,17 @@ from urllib.parse import urlparse
 
 import httpx
 
+# Import prepaid client for prepaid payment support
+try:
+    from prepaid_client import check_and_deduct, get_prepaid_status, fallback_to_standard_payment
+    from prepaid_models import PrepaidCredential
+    PREPAID_AVAILABLE = True
+except ImportError:
+    PREPAID_AVAILABLE = False
+    check_and_deduct = None
+    get_prepaid_status = None
+    fallback_to_standard_payment = None
+
 # Configuration paths
 AG402_DIR = Path.home() / ".ag402"
 CONFIG_FILE = AG402_DIR / "config.json"
@@ -360,6 +371,18 @@ async def cmd_pay(
     if method and method.upper() not in ALLOWED_METHODS:
         return {"status": "error", "message": f"Invalid HTTP method: {method}. Allowed: {ALLOWED_METHODS}"}
 
+    # PREPAID: Try prepaid first if available
+    seller_address = urlparse(url).netloc.split(":")[0]
+    
+    prepaid_used = False
+    if PREPAID_AVAILABLE and check_and_deduct:
+        prepaid_success, credential = check_and_deduct(seller_address)
+        if prepaid_success and credential:
+            prepaid_used = True
+            if headers is None:
+                headers = {}
+            headers["X-Prepaid-Credential"] = credential.to_header_value()
+
     # Check wallet
     wallet = _load_wallet()
     if wallet is None:
@@ -469,20 +492,31 @@ async def cmd_pay(
                 content=data,
             )
 
-        # Deduct from balance
-        new_balance = balance - amount
-        wallet["balance"] = new_balance
-        _save_wallet(wallet)
+        # Handle payment based on prepaid vs standard
+        if prepaid_used:
+            # Prepaid was used - record as prepaid transaction
+            tx_id = f"tx_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            _add_transaction("prepaid", amount, "success", "Prepaid API call", url)
+        else:
+            # Standard payment - deduct from wallet
+            new_balance = balance - amount
+            wallet["balance"] = new_balance
+            _save_wallet(wallet)
 
-        # Record transaction
-        tx_id = f"tx_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        _add_transaction("payment", amount, "success", "API call", url)
+            # Record transaction
+            tx_id = f"tx_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            _add_transaction("payment", amount, "success", "API call", url)
 
+        # Get updated balance
+        if prepaid_used:
+            wallet = _load_wallet()
+        
         return {
             "status": "success",
             "message": f"Payment of {amount} USDC completed",
             "tx_id": tx_id,
-            "new_balance": new_balance,
+            "new_balance": wallet.get("balance", 0.0) if wallet else 0.0,
+            "prepaid_used": prepaid_used,
             "response_status": response.status_code,
         }
 
@@ -548,6 +582,18 @@ async def cmd_doctor() -> dict[str, Any]:
     ALLOWED_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
     if method and method.upper() not in ALLOWED_METHODS:
         return {"status": "error", "message": f"Invalid HTTP method: {method}. Allowed: {ALLOWED_METHODS}"}
+
+    # PREPAID: Try prepaid first if available
+    seller_address = urlparse(url).netloc.split(":")[0]
+    
+    prepaid_used = False
+    if PREPAID_AVAILABLE and check_and_deduct:
+        prepaid_success, credential = check_and_deduct(seller_address)
+        if prepaid_success and credential:
+            prepaid_used = True
+            if headers is None:
+                headers = {}
+            headers["X-Prepaid-Credential"] = credential.to_header_value()
 
     # Check wallet
     wallet = _load_wallet()
@@ -705,6 +751,28 @@ class AG402Skill:
                 return await cmd_gateway_stop()
             else:
                 return {"status": "error", "message": f"Unknown gateway subcommand: {subcmd}"}
+
+        elif command == "prepaid":
+            if not args:
+                return {"status": "error", "message": "Missing prepaid subcommand. Use: prepaid status|buy <package_id>"}
+            subcmd = args[0]
+            if subcmd == "status":
+                if PREPAID_AVAILABLE and get_prepaid_status:
+                    status = get_prepaid_status()
+                    return {"status": "success", "prepaid_status": status}
+                else:
+                    return {"status": "error", "message": "Prepaid module not available"}
+            elif subcmd == "buy":
+                if len(args) < 2:
+                    return {"status": "error", "message": "Usage: prepaid buy <package_id>"}
+                package_id = args[1]
+                # TODO: Implement actual purchase with payment
+                return {"status": "error", "message": "Purchase not implemented - use prepaid_client.create_credential_for_purchase for testing"}
+            elif subcmd == "list":
+                from prepaid_models import PACKAGES
+                return {"status": "success", "packages": PACKAGES}
+            else:
+                return {"status": "error", "message": f"Unknown prepaid subcommand: {subcmd}"}
 
         elif command == "doctor":
             return await cmd_doctor()
