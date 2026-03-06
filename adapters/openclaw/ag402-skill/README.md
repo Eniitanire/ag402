@@ -13,17 +13,16 @@ Integrates ag402 AI Agent Payment Protocol with OpenClaw.
 - **gateway start/stop**: Control payment gateway
 - **doctor**: Health check and diagnostics
 
-### Security Features
+### Security Features (v0.1.12)
 
-| Feature | Description |
-|---------|-------------|
-| SSRF Protection | Blocks localhost, private IPs, dangerous ports |
-| Race Condition Fix | File locking for atomic balance operations |
-| API Key Auth | Support for AG402_API_KEY environment variable |
-| Header Filtering | Blocks dangerous headers (authorization, cookie, x-api-key) |
-| Method Whitelist | Only safe HTTP methods allowed |
-| Budget Limits | $50 single / $20 min / $100 daily |
-| Payment Confirm | $10 threshold for user confirmation |
+| Feature | Status | Description |
+|---------|--------|-------------|
+| SSRF Protection | ✅ | Blocks HTTP, localhost, private IPs, IPv6, DNS rebinding, decimal/hex IPs |
+| Race Condition Fix | ✅ | File locking (fcntl.flock) for atomic balance operations |
+| API Key Auth | ✅ | Protects sensitive commands (pay, deposit, gateway) |
+| Header Whitelist | ✅ | Only allows safe headers, blocks dangerous ones |
+| Input Validation | ✅ | Validates amount (negative, non-number, max limit) |
+| Budget Limits | ✅ | $50 single / $20 min / $100 daily |
 
 ## Quick Start
 
@@ -49,7 +48,7 @@ setup
 # Check balance
 wallet status
 
-# Make payment
+# Make payment (requires HTTPS)
 pay https://api.example.com/data
 
 # View history
@@ -70,57 +69,37 @@ doctor
 
 ## Security
 
-- Wallet file permissions: 600 (chmod required)
-- All payments require confirmation for amounts >= $10
-- Built-in budget limits prevent overspending
-- Audit logging for all transactions
+### SSRF Protection
+The `pay` command includes comprehensive SSRF protection:
+- ✅ Blocks `http://` (requires HTTPS)
+- ✅ Blocks localhost (127.0.0.1, ::1)
+- ✅ Blocks private IPs (10.x, 172.16-31.x, 192.168.x)
+- ✅ Blocks IPv6 variants ([::ffff:127.0.0.1])
+- ✅ Blocks decimal IPs (2130706433 = 127.0.0.1)
+- ✅ Blocks hex IPs (0x7F000001)
+- ✅ DNS rebinding protection
+
+### Authentication
+- Sensitive commands require AG402_API_KEY:
+  - `wallet deposit` - requires auth
+  - `gateway start/stop` - requires auth
+  - `pay` - requires auth (if amount >= threshold)
+- Read-only commands are public:
+  - `wallet status` - public
+  - `wallet history` - public
+  - `doctor` - public
+
+### Input Validation
+- Amount must be positive (> 0)
+- Amount must be a valid number
+- Amount cannot exceed 1,000,000
+
+### File Security
+- Wallet file permissions: 600
+- Transaction logs protected
+- API keys never logged
 
 ## Version
 
-v0.1.12 - 2026-03-06
-
----
-
-## Prepaid System (v0.1.12+)
-
-### Overview
-
-The prepaid system allows AI agents to purchase bundled API calls at discounted rates, reducing gas costs by 99.9%.
-
-### Package Tiers
-
-| Package | Days | Calls | Price (USDC) |
-|---------|------|-------|--------------|
-| p3d_100 | 3 | 100 | 1.5 |
-| p7d_500 | 7 | 500 | 5.0 |
-| p30d_1000 | 30 | 1000 | 8.0 |
-| p365d_5000 | 365 | 5000 | 35.0 |
-| p730d_10000 | 730 | 10000 | 60.0 |
-
-### How It Works
-
-1. **Purchase**: Buyer purchases a prepaid package via `ag402 prepaid buy <package_id>`
-2. **Storage**: Credential is stored locally in `~/.ag402/prepaid_credentials.json`
-3. **API Call**: When making API calls, prepaid credentials are checked first
-4. **Verification**: Seller verifies the HMAC-signed credential
-5. **Fallback**: If no prepaid available, falls back to standard 402 payment
-
-### Commands
-
-```bash
-# Check prepaid balance
-ag402 prepaid status
-
-# List available packages  
-ag402 prepaid list
-
-# Purchase a package (for testing)
-ag402 prepaid buy p30d_1000
-```
-
-### Security
-
-- HMAC-SHA256 signature verification
-- Constant-time comparison prevents timing attacks
-- Credential expiry validation
-- Seller address verification
+**v0.1.12** - 2026-03-06
+- Security fixes: SSRF, auth, race condition, input validation, header whitelist
