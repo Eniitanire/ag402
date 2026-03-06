@@ -236,8 +236,18 @@ def _setup_wallet(result: SetupResult) -> None:
 
 def _setup_provider(result: SetupResult) -> None:
     """Configure provider-specific settings."""
+    # ── Security reminder: sellers never need a private key ──
+    print(f"  {yellow('⚠')} {bold('Wallet Safety Reminder')}")
+    print("  ┌────────────────────────────────────────────────────────┐")
+    print("  │  Sellers only need a PUBLIC receiving address.         │")
+    print("  │  Do NOT paste your private key here!                   │")
+    print("  │  Ag402 verifies payments using your public address —   │")
+    print("  │  no signing or private key access is ever required.    │")
+    print("  └────────────────────────────────────────────────────────┘")
+    print()
+
     result.receive_address = _prompt_input(
-        "Your Solana USDC receiving address",
+        "Your Solana USDC receiving address (public key)",
         default="(skip for test mode)" if result.mode == "test" else "",
     )
     if result.receive_address == "(skip for test mode)":
@@ -247,6 +257,17 @@ def _setup_provider(result: SetupResult) -> None:
         result.receive_address = "Test" + "".join(random.choices(_b58, k=40))
         print(f"  {green('✓')} Using test receiving address")
     else:
+        # ── Private key misuse detection ──
+        # Solana public keys are 32-44 chars; private keys are typically 64-88+ chars
+        addr = result.receive_address.strip()
+        if len(addr) > 50:
+            print(f"  {red('✗')} That looks like a private key (too long for a public address)!")
+            print(f"  {red('  NEVER share your private key. Sellers only need a public address.')}")
+            print(f"  {dim('  A Solana public address is 32-44 characters long.')}")
+            print()
+            result.receive_address = _prompt_input(
+                "Please enter your PUBLIC address instead",
+            )
         print(f"  {green('✓')} Receiving address set")
 
     result.api_price = _prompt_input("Price per API call (USDC)", default="0.02")

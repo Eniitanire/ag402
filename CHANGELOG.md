@@ -5,32 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.11] - 2026-03-06
-
-### Added
-
-- **ag402 OpenClaw Adapter**: Native OpenClaw Skill and bridge adapter
-  - Single-skill hybrid architecture (Skill + MCP tools)
-  - Auto-install scripts for easy setup
-  - Commands: setup, wallet status/deposit/history, pay, gateway start/stop, doctor
-  - OpenClaw bridge for mcporter integration
+## [0.1.11] - 2026-03-05
 
 ### Security
 
-- **SSRF Protection**: Block localhost, private IPs, dangerous ports
-- **Race Condition Fix**: File locking with fcntl for atomic balance operations
-- **API Key Authentication**: AG402_API_KEY environment variable support
-- **Header Injection Prevention**: Block dangerous headers (authorization, cookie, x-api-key)
-- **HTTP Method Whitelist**: Only allow safe methods (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)
-- **Payment Confirmation**: $10 threshold for user confirmation
-- **Budget Limits**: $50 single / $20 min / $100 daily
-
-### Fixed
-
-- **Payment confirmation not called**: confirm_payment() now integrated in proxy_request()
-- **Daily limit reset**: BudgetState properly resets on new day
-- **Module imports**: Fixed __init__.py exports
-
+- **Seller-No-Key documentation hardening**: Comprehensive audit ensuring sellers are never misled into providing a private key
+- `.env.example`: Removed seller private key field; `SOLANA_PRIVATE_KEY` marked `⚠️ BUYER ONLY` with role-specific comments
+- `.env.example`: Added bottom-of-file seller security notice
+- `SECURITY.md`: Added **Seller-No-Key Architecture** to Security Design section
+- `setup_wizard.py`: Added security reminder box and private-key-paste detection for seller role
+- `cli.py`: `ag402 serve` now prints seller security reminder on startup
+- `llms.txt`: Enhanced Sell Skill and added Red Flags section for LLM agents
+- `README.md`: Added "For Sellers" security guidance
+- `index.html`: Added seller security notice to landing page
+- `conftest_devnet.py`: Enhanced test comments clarifying seller needs only pubkey
 
 ## [0.1.10] - 2026-03-04
 

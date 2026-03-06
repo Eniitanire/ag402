@@ -1,17 +1,21 @@
 """
 Shared fixtures for Solana Devnet integration tests.
 
-Environment variables (keypair loading — choose ONE method per role):
+Environment variables (keypair loading):
 
-  Method A – base58 private key (e.g. Phantom export):
-    DEVNET_BUYER_PRIVATE_KEY  – buyer's full secret key in base58
-    DEVNET_SELLER_PRIVATE_KEY – seller's full secret key in base58
+  Buyer (needs private key for signing transactions):
+    DEVNET_BUYER_PRIVATE_KEY  – buyer's full secret key in base58 (Method A)
+    DEVNET_BUYER_KEY_PATH     – path to buyer keypair JSON (Method B, default: ~/.ag402/devnet-buyer.json)
 
-  Method B – JSON file (Solana CLI format):
-    DEVNET_BUYER_KEY_PATH  – path to buyer keypair JSON (default: ~/.ag402/devnet-buyer.json)
-    DEVNET_SELLER_KEY_PATH – path to seller keypair JSON (default: ~/.ag402/devnet-seller.json)
+  Seller (only needs PUBLIC address for receiving payments):
+    DEVNET_SELLER_PUBKEY      – seller's public address (preferred)
+    DEVNET_SELLER_PRIVATE_KEY – (legacy, test-only) only used to derive pubkey in E2E tests
+    DEVNET_SELLER_KEY_PATH    – (legacy, test-only) only used to derive pubkey in E2E tests
 
-  Method A takes precedence when set.
+  ⚠️  In production, sellers NEVER need a private key.
+      Ag402 only uses the seller's public address for payment verification.
+
+  Method A (base58) takes precedence when set.
 
 Other variables:
     SOLANA_RPC_URL – devnet RPC (default: https://api.devnet.solana.com)
@@ -189,16 +193,18 @@ def _sync_setup() -> DevnetState:
         buyer_kp = _load_keypair(buyer_path)
 
     if seller_b58:
+        # ⚠️ SELLER PRIVATE KEY — E2E TEST ONLY
+        # In production, sellers NEVER provide or need a private key.
+        # This is only used in E2E tests to derive a pubkey + create ATA.
         seller_kp = _keypair_from_base58(seller_b58)
     else:
         seller_path = os.getenv(
             "DEVNET_SELLER_KEY_PATH",
             str(Path.home() / ".ag402" / "devnet-seller.json"),
         )
-        # No seller private key available — generate an ephemeral one when
-        # the file is missing.  Some tests (e.g. insufficient-balance) need a
-        # keypair to instantiate SolanaAdapter, even though the main "seller"
-        # role only needs a pubkey.
+        # No seller private key — generate an ephemeral one when the file
+        # is missing.  The seller role in Ag402 ONLY needs a public address.
+        # The keypair here is solely for test setup (creating ATA, etc.).
         seller_kp = _load_keypair(seller_path) if os.path.exists(seller_path) else Keypair()
 
     # If DEVNET_SELLER_PUBKEY is set, use it as the destination address for payments;
