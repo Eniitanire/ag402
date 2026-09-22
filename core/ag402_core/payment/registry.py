@@ -41,8 +41,15 @@ class PaymentProviderRegistry:
             from ag402_core.payment.solana_adapter import MockSolanaAdapter
             return MockSolanaAdapter()
 
+        if name == "nano-mock":
+            from ag402_core.payment.nano_adapter import MockNanoAdapter
+            return MockNanoAdapter()
+
         if name == "solana":
             return cls._build_solana(config)
+
+        if name == "nano":
+            return cls._build_nano(config)
 
         if name == "stripe":
             raise NotImplementedError(
@@ -65,6 +72,10 @@ class PaymentProviderRegistry:
         if config.solana_private_key:
             return cls._build_solana(config)
 
+        # 2.5 Nano seed present -> real Nano adapter
+        if config.nano_private_key:
+            return cls._build_nano(config)
+
         # 3. Stripe key (V2 placeholder)
         import os
         if os.getenv("STRIPE_SECRET_KEY"):
@@ -75,7 +86,7 @@ class PaymentProviderRegistry:
         # 4. Nothing configured
         raise ConfigError(
             "No payment provider could be auto-detected. "
-            "Set SOLANA_PRIVATE_KEY (or X402_MODE=test for testing)."
+            "Set SOLANA_PRIVATE_KEY, NANO_PRIVATE_KEY (or X402_MODE=test for testing)."
         )
 
     @classmethod
@@ -93,6 +104,21 @@ class PaymentProviderRegistry:
             rpc_url=config.effective_rpc_url,
             usdc_mint=config.usdc_mint_address,
             rpc_backup_url=config.solana_rpc_backup_url,
+        )
+
+    @classmethod
+    def _build_nano(cls, config: X402Config) -> BasePaymentProvider:
+        """Construct a real ``NanoAdapter`` (lazy imports nanopy)."""
+        from ag402_core.payment.nano_adapter import NanoAdapter
+
+        if not config.nano_private_key:
+            raise ConfigError(
+                "NANO_PRIVATE_KEY is required for the Nano payment provider."
+            )
+
+        return NanoAdapter(
+            private_key=config.nano_private_key,
+            rpc_url=config.nano_rpc_url,
         )
 
 

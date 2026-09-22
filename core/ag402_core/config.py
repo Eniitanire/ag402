@@ -97,6 +97,14 @@ class X402Config:
     )
     usdc_mint_address: str = field(default_factory=lambda: os.getenv("USDC_MINT_ADDRESS", ""))
 
+    # --- Nano (XNO) wallet ---
+    nano_private_key: str = field(
+        default_factory=lambda: os.getenv("NANO_PRIVATE_KEY", ""), repr=False
+    )
+    nano_rpc_url: str = field(
+        default_factory=lambda: os.getenv("NANO_RPC_URL", "https://rpc.nano.to")
+    )
+
     def __post_init__(self) -> None:
         # Auto-select USDC mint based on network if not explicitly set.
         # Prevents accidentally using devnet mint on mainnet (money loss!).
